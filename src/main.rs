@@ -289,8 +289,8 @@ async fn config_post(
         if form_data.contains_key("del_enc") {
             let pin_a = state.enc.clone().unwrap().pin_a;
             let pin_b = state.enc.clone().unwrap().pin_b;
-            process_pins(&mut state.gpio_pins, pin_a, false);
-            process_pins(&mut state.gpio_pins, pin_b, false);
+            let _ = process_pins(&mut state.gpio_pins, pin_a, false);
+            let _ = process_pins(&mut state.gpio_pins, pin_b, false);
             state.enc = None;
             state.status = "Encoder has benn deleted!".to_string();
             
@@ -385,8 +385,8 @@ async fn config_post(
                 form_data.get("PinB").unwrap().parse().unwrap(),
             ));
             let _ = state.enc.clone().unwrap().run();
-            process_pins(&mut state.gpio_pins, form_data.get("PinA").unwrap().parse().unwrap(), true);
-            process_pins(&mut state.gpio_pins, form_data.get("PinB").unwrap().parse().unwrap(), true);
+            let _ = process_pins(&mut state.gpio_pins, form_data.get("PinA").unwrap().parse().unwrap(), true);
+            let _ = process_pins(&mut state.gpio_pins, form_data.get("PinB").unwrap().parse().unwrap(), true);
             println!("Encoder Added");
             state.status = format!(
                 "Encoder Added on pins: {:?}, {:?}",
@@ -686,7 +686,7 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, mut form: Multipart) ->
                 None
             };
             if let Some(mut enc) = state_lck.enc.clone() {
-                enc.run();
+                let _ = enc.run();
             }
             state_lck.band = output.band;
         }
@@ -722,7 +722,7 @@ async fn pwr_btn_handler(State(state): State<Arc<Mutex<AppState>>>, mut form: Mu
             "Blwr" => {
                 let mut state_lck = state.lock().unwrap();
                 let pin = state_lck.pwr_btns.Blwr[0];
-                state_lck.pwr_btns.mcp.lock().unwrap().mcp.set_gpio(pin, if action == "ON" {mcp230xx::Level::High} else {mcp230xx::Level::Low});
+                let _ = state_lck.pwr_btns.mcp.lock().unwrap().mcp.set_gpio(pin, if action == "ON" {mcp230xx::Level::High} else {mcp230xx::Level::Low});
                 state_lck.status = format!("{}", if action == "ON" {"Blower ON"} else {"Blower OFF"});
 
             }
@@ -736,7 +736,7 @@ async fn pwr_btn_handler(State(state): State<Arc<Mutex<AppState>>>, mut form: Mu
             "Oper" => {
                 let mut state_lck = state.lock().unwrap();
                 let pin = state_lck.pwr_btns.Oper[0];
-                state_lck.pwr_btns.mcp.lock().unwrap().mcp.set_gpio(pin, if action == "ON" {mcp230xx::Level::High} else {mcp230xx::Level::Low});
+                let _ = state_lck.pwr_btns.mcp.lock().unwrap().mcp.set_gpio(pin, if action == "ON" {mcp230xx::Level::High} else {mcp230xx::Level::Low});
                 state_lck.status = format!("{}", if action == "ON" {"Operate"} else {"Standby"});
 
             }
@@ -756,10 +756,10 @@ where
         let pin1 = my_btns[0];
         let pin2 = my_btns[1];
         let pin1_status = state_lck.pwr_btns.mcp.lock().unwrap().mcp.gpio(pin1).unwrap();
-        state_lck.pwr_btns.mcp.lock().unwrap().mcp.set_gpio(pin1, if action == "ON" {mcp230xx::Level::High} else {mcp230xx::Level::Low});  
+        let _ = state_lck.pwr_btns.mcp.lock().unwrap().mcp.set_gpio(pin1, if action == "ON" {mcp230xx::Level::High} else {mcp230xx::Level::Low});  
         if form_data.contains_key("delay") {
             let delay = form_data.get("delay").unwrap();
-            state_lck.pwr_btns.mcp.lock().unwrap().mcp.set_gpio(pin2, if delay == "ON"  && pin1_status == mcp230xx::Level::High {mcp230xx::Level::High} else {mcp230xx::Level::Low});
+            let _ = state_lck.pwr_btns.mcp.lock().unwrap().mcp.set_gpio(pin2, if delay == "ON"  && pin1_status == mcp230xx::Level::High {mcp230xx::Level::High} else {mcp230xx::Level::Low});
             state_lck.status = format!("{}", if action == "ON" && delay == "OFF" {
                 format!("{} Step Start !!!",  name)
             } else if pin1_status == mcp230xx::Level::High && delay == "ON" {
@@ -864,32 +864,10 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
         sse_output.screen_a = val.gauges.screen_a;
         sse_output.grid_a = val.gauges.grid_a;
         sse_output.status = val.status.clone();
-        val.sender.send(serde_json::to_string(&sse_output).unwrap());    
+        let _ = val.sender.send(serde_json::to_string(&sse_output).unwrap());    
     }
 }
 
-fn read_dir() -> Result<Vec<String>, io::Error> {
-    let file_path = path::Path::new("static");
-    let files = fs::read_dir(file_path);
-    let mut output: Vec<String> = Vec::new();
-    match files {
-        Ok(f) => {
-            println!("File: {:?}", f);
-            for file in f {
-                let file_name = file.unwrap().file_name();
-                let file_string = file_name.to_string_lossy();
-                output.push((&file_string).to_string());
-                println!("File:{}", file_string);
-            }
-        }
-        Err(e) => {
-            println!("Error:{}", e);
-            return Err(e);
-        }
-    }
-
-    Ok(output)
-}
 fn handle_stepper<F> (state: &mut AppState, form_data: HashMap<String, String>, name: &str, add: bool, process: F)
 where
     F: Fn(&mut AppState) -> Arc<Mutex<Stepper>>,
@@ -906,8 +884,8 @@ where
         state_stepper.pin_a = Some(pin_a);
         state_stepper.pin_b = Some(pin_b);
         state_stepper.ratio = ratio;
-        process_pins(&mut state.gpio_pins, pin_a, true);
-        process_pins(&mut state.gpio_pins, pin_b, true);
+        let _ = process_pins(&mut state.gpio_pins, pin_a, true);
+        let _ = process_pins(&mut state.gpio_pins, pin_b, true);
         if name == "ind" {
             state_stepper.speed = Duration::from_micros(400);
         }
@@ -916,8 +894,8 @@ where
             println!("Deleting {}", state_stepper.name);
             let pin_a = state_stepper.pin_a.unwrap();
             let pin_b = state_stepper.pin_b.unwrap();
-            process_pins(&mut state.gpio_pins, pin_a, false);
-            process_pins(&mut state.gpio_pins, pin_b, false);
+            let _ = process_pins(&mut state.gpio_pins, pin_a, false);
+            let _ = process_pins(&mut state.gpio_pins, pin_b, false);
             state_stepper.pin_a = None;
             state_stepper.pin_b = None;
             state_stepper.ratio = 1;
@@ -1015,7 +993,7 @@ fn sleep_save(state: Arc<Mutex<AppState>>) {
     let dir = path::Path::new("/home/pi/Documents/Code/rust/amplifier/static");
     let full_path = dir.join(file_path);
     if !fs::exists(&full_path).unwrap() {
-        fs::File::create(&full_path);
+        let _ = fs::File::create(&full_path);
     }
     let mut saved_state = StoredData::new();
     saved_state.enc.entry("PinA".to_string()).insert_entry(state_lck.clone().enc.unwrap().pin_a as u32);
