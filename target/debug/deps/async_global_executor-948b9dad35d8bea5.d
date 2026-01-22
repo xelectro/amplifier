@@ -1,0 +1,10 @@
+/home/pi/Documents/Code/rust/amplifier/target/debug/deps/async_global_executor-948b9dad35d8bea5.d: /home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/lib.rs /home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/config.rs /home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/executor.rs /home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/init.rs /home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/reactor.rs /home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/threading.rs
+
+/home/pi/Documents/Code/rust/amplifier/target/debug/deps/libasync_global_executor-948b9dad35d8bea5.rmeta: /home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/lib.rs /home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/config.rs /home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/executor.rs /home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/init.rs /home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/reactor.rs /home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/threading.rs
+
+/home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/lib.rs:
+/home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/config.rs:
+/home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/executor.rs:
+/home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/init.rs:
+/home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/reactor.rs:
+/home/pi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-global-executor-2.4.1/src/threading.rs:
