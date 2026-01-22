@@ -1,1 +1,0 @@
-Result<std::sync::MutexGuard<'_, AppState>, PoisonError<std::sync::MutexGuard<'_, AppState>>>

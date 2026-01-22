@@ -1,2 +1,0 @@
-fn(TypedHeader<UserAgent>, axum::extract::State<Arc<std::sync::Mutex<AppState>>>) -> impl futures_util::Future<Output = Sse<impl Stream<Item = Result<(), std::fmt::Error>>>> {sse_handler}
-fn(TypedHeader<UserAgent>, axum::extract::State<Arc<std::sync::Mutex<AppState>>>) -> impl futures_util::Future<Output = Sse<impl Stream<Item = Result<(), std::fmt::Error>>>> {sse_handler}: Handler<_, _>

@@ -1,1 +1,0 @@
-/home/pi/Documents/Code/rust/amplifier/target/debug/amplifier: /home/pi/Documents/Code/rust/amplifier/src/lib.rs /home/pi/Documents/Code/rust/amplifier/src/main.rs /home/pi/Documents/Code/rust/amplifier/templates/amplifier2.html /home/pi/Documents/Code/rust/amplifier/templates/config2.html
