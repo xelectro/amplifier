@@ -23,6 +23,7 @@ use serde_json;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Error;
+use std::os::linux::raw::stat;
 use std::path;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
@@ -300,6 +301,7 @@ async fn config_post(
                 println!("PinA already initialized for Tune");
             } else {
                 handle_stepper(&mut state, form_data,  "Tune", true,|state| state.tune.clone());
+                state.tune.lock().unwrap().run_2();
             }
         }
         else if form_data.contains_key("del_tune") {
@@ -311,6 +313,8 @@ async fn config_post(
             } else {
                 handle_stepper(&mut state, form_data,  "Ind", true,|state| state.ind.clone()); 
                 //state.ind.lock().unwrap().speed = Duration::from_millis(1)
+                state.ind.lock().unwrap().run_2();
+
             }
         }
         else if form_data.contains_key("del_ind") {
@@ -321,6 +325,7 @@ async fn config_post(
                 println!("PinA already initialized for Load");
             } else {
                handle_stepper(&mut state, form_data,  "Load", true,|state| state.load.clone()); 
+               state.load.lock().unwrap().run_2();
             }
         }
         else if form_data.contains_key("del_load") {
@@ -514,6 +519,8 @@ async fn selector(
                     if let Ok(_) = selector_handler(&mut state, |x| x.ind.clone()) {
                         state.status = "Ind is selected".to_string();
                         state.sw_pos = Some(Select::Ind);
+                        
+                        
                     }
                 }
                 "load" => {
@@ -667,8 +674,10 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, mut form: Multipart) ->
                 stepper.lock().unwrap().ratio = *my_output_arr[i].get("ratio").unwrap() as u8;
                 let mut stepper_lck = stepper.lock().unwrap();
                 if stepper_lck.name == "ind" {
+                    println!("Inductor set to lower speed");
                     stepper_lck.speed = Duration::from_micros(400);
                 }
+                stepper_lck.run_2();
                 drop(stepper_lck);
                 for band in bands {
                     let mut stepper_lck = stepper.lock().unwrap();
@@ -772,14 +781,14 @@ where
     
 // Aquires data from peripheral devices.
 async fn aquire_data(state: Arc<Mutex<AppState>>) {
-    let mut interval = interval(Duration::from_micros(1000));
+    let mut interval = interval(Duration::from_millis(10));
     println!("Aquire data");
     loop {
         interval.tick().await;
         let val = state.lock().unwrap().clone();
-        let tune = val.tune.lock().unwrap();
-        let ind = val.ind.lock().unwrap();
-        let load = val.load.lock().unwrap();
+        let tune = val.tune.lock().unwrap().clone();
+        let ind = val.ind.lock().unwrap().clone();
+        let load = val.load.lock().unwrap().clone();
         if let Some(_) = val.enc {
             let clone = val.enc.clone().unwrap().enc();
             if clone >= 0 {
@@ -787,8 +796,10 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
                     Some(Select::Tune) => {
                         if  clone < tune.max.load(Ordering::Relaxed) && clone > 0 {
                             if let Some(_) = tune.pin_a {
-                                
-                                    tune.run(clone as u32);
+                                //tune.run(clone as u32);
+                                if let Some(ch) = tune.channel.clone() {
+                                    ch.send(clone as u32);
+                                }
                             } else {
                                 tune.pos.store(clone, Ordering::Relaxed);
                             }
@@ -797,7 +808,10 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
                     Some(Select::Ind) => {
                         if  clone < ind.max.load(Ordering::Relaxed) && clone > 0 {
                             if let Some(_) = ind.pin_a {
-                                ind.run(clone as u32);
+                                //ind.run(clone as u32);
+                                if let Some(ch) = ind.channel.clone() {
+                                    ch.send(clone as u32);
+                                }
                             } else {
                                 ind.pos.store(clone, Ordering::Relaxed);
                             }
@@ -806,7 +820,10 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
                     Some(Select::Load) => {
                         if  clone < load.max.load(Ordering::Relaxed) && clone > 0 {
                             if let Some(_) = load.pin_a {
-                                load.run(clone as u32);
+                                //load.run(clone as u32);
+                                if let Some(ch) = load.channel.clone() {
+                                    ch.send(clone as u32);
+                                }
                             } else {
                                 load.pos.store(clone, Ordering::Relaxed);
                             }
@@ -886,7 +903,7 @@ where
         state_stepper.ratio = ratio;
         let _ = process_pins(&mut state.gpio_pins, pin_a, true);
         let _ = process_pins(&mut state.gpio_pins, pin_b, true);
-        if name == "ind" {
+        if name == "Ind" {
             state_stepper.speed = Duration::from_micros(400);
         }
     } else {
@@ -939,14 +956,14 @@ fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: Bands) 
                 thread::spawn(move || {
                     let mut temp_lck = x.lock().unwrap().clone();
                     if let Some(_) = temp_lck.pin_a { 
-                        temp_lck.run(temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed) as u32);
+                        temp_lck.channel.unwrap().send(temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed) as u32);
                     } else {
                         temp_lck.pos.store(temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed), Ordering::Relaxed);
                     }
                     println!("Run thread ended");
                     counter.lock().unwrap().fetch_sub(1, Ordering::SeqCst);
                     if counter.lock().unwrap().load(Ordering::SeqCst) == 0 {
-                        sleep_save(state_lck.clone());
+                        //sleep_save(state_lck.clone());
                         println!("Sleep activation from thread");
                         
                     }

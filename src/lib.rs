@@ -2,7 +2,6 @@ pub mod encoder {
     use rppal::gpio::{Gpio, Level, Mode};
     use rppal::system::DeviceInfo;
     use serde::{Deserialize, Serialize};
-    use std::sync::mpsc;
     use std::sync::{
         Arc,
         atomic::{AtomicI32, Ordering},
@@ -11,8 +10,7 @@ pub mod encoder {
     use std::time::Duration;
     extern crate rppal;
 
-    const GPIO_PIN_CLK: u8 = 24;
-    const GPIO_PIN_DAT: u8 = 23;
+    
     /*
        fn main() {
            let mut my_enc = Encoder::new();
@@ -48,11 +46,12 @@ pub mod encoder {
             let master_count = Arc::clone(&self.count);
 
             //let (tx, rx) = mpsc::channel();
-
+            let pin_a = self.pin_a.clone();
+            let pin_b = self.pin_b.clone();
             thread::spawn(move || {
                 let gpio = Gpio::new().unwrap();
-                let pin1 = gpio.get(GPIO_PIN_CLK).unwrap().into_input_pullup();
-                let pin2 = gpio.get(GPIO_PIN_DAT).unwrap().into_input_pullup();
+                let pin1 = gpio.get(pin_a).unwrap().into_input_pullup();
+                let pin2 = gpio.get(pin_b).unwrap().into_input_pullup();
 
                 let mut last_clk_state = Level::High;
 
@@ -99,8 +98,11 @@ pub mod encoder {
 }
 
 pub mod stepper {
+    use async_std::task::sleep;
+    use std::sync::mpsc::{self, Sender, Receiver};
     use rppal::gpio::{Gpio, Level, Mode};
     use serde::{Deserialize, Serialize};
+    use core::time;
     use std::collections::HashMap;
     use std::sync::{
         Arc,
@@ -112,6 +114,7 @@ pub mod stepper {
     #[derive(Clone)]
     pub struct Stepper {
         pub name: String,
+        pub channel: Option<Sender<u32>>,
         pub pin_a: Option<u8>,
         pub pin_b: Option<u8>,
         pub ena: Option<u8>,
@@ -126,6 +129,7 @@ pub mod stepper {
         pub fn new(name: &str) -> Self {
             Self {
                 name: name.to_string(),
+                channel: None,
                 pin_a: None,
                 pin_b: None,
                 ena: None,
@@ -179,6 +183,57 @@ pub mod stepper {
                     }
                 }
             }
+        }
+
+        pub fn run_2(&mut self) {
+            println!("Inside run 2");
+            let (tx, mut rx) = mpsc::channel();
+            self.channel = Some(tx);
+            let mut steps: u32 = 0;
+            let mut dir: String = String::new();
+            let pos: u32 = self.pos.load(Ordering::Relaxed) as u32;
+            let gpio = Gpio::new().unwrap();
+            let mut pulse_pin = gpio.get(self.pin_a.unwrap()).unwrap().into_output();
+            let mut dir_pin = gpio.get(self.pin_b.unwrap()).unwrap().into_output();
+            let mut count = 0;
+            let pos = self.pos.clone();
+            let speed = self.speed.clone();
+            thread::spawn(move ||  {
+                loop{
+                    println!("Inside loop");
+                    if let Ok(val) = rx.recv() {
+                        pulse_pin.set_low();
+                        if val > pos.load(Ordering::Relaxed) as u32 {
+                            dir = "CW".to_string();
+                            dir_pin.set_high();
+                            while val > pos.load(Ordering::Relaxed) as u32 {
+                                count += 1;
+                                pulse_pin.set_high();
+                                thread::sleep(speed);
+                                pulse_pin.set_low();
+                                thread::sleep(speed);
+                                if count % 2 == 0 { 
+                                    pos.fetch_add(1, Ordering::Relaxed);
+                                }
+                            }
+                        } else if val < pos.load(Ordering::Relaxed) as u32{
+                            dir = "CCW".to_string();
+                            dir_pin.set_low();
+                            while val < pos.load(Ordering::Relaxed) as u32 {
+                                count += 1;
+                                pulse_pin.set_high();
+                                thread::sleep(speed);
+                                pulse_pin.set_low();
+                                thread::sleep(speed);
+                                if count % 2 == 0 {
+                                    pos.fetch_add(-1, Ordering::Relaxed); 
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
         }
     }
 }
