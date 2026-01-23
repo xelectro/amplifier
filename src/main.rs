@@ -20,6 +20,7 @@ use async_stream::stream;
 use futures_util::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
 use serde_json;
+use core::time;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Error;
@@ -139,7 +140,6 @@ struct AppState {
     file: String,
     last_change: HashMap<String, bool>,
     sleep: bool,
-    thread_counter: Arc<Mutex<AtomicU8>>,
     enable_pin: Arc<Mutex<OutputPin>>,
     pwr_btns: PwrBtns,
     gpio_pins: Vec<u8>,
@@ -182,7 +182,7 @@ impl PwrBtns {
             Blwr: [*mcp.pins.get("A0").unwrap()],
             Fil: [*mcp.pins.get("A1").unwrap(), *mcp.pins.get("A2").unwrap()],
             HV: [*mcp.pins.get("A3").unwrap(), *mcp.pins.get("A4").unwrap()],
-            Oper: [*mcp.pins.get("A0").unwrap()],
+            Oper: [*mcp.pins.get("A5").unwrap()],
             mcp: Arc::new(Mutex::new(mcp)),
         }
     }
@@ -211,7 +211,6 @@ async fn main() -> Result<(), std::io::Error> {
         file: String::from("amplifier.json"),
         last_change: HashMap::from([("sleep".to_string(), false)]),
         sleep: false,
-        thread_counter: Arc::new(Mutex::new(AtomicU8::new(0))),
         enable_pin: {
             let gpio = Gpio::new().unwrap();
             let mut pin = gpio.get(ENABLE_PIN).unwrap().into_output();
@@ -502,7 +501,11 @@ async fn selector(
     println!("{}", val);
     let mut mode: Option<Select>;
     app_state.lock().unwrap().enable_pin.lock().unwrap().set_low();
-    if app_state.lock().unwrap().thread_counter.lock().unwrap().load(Ordering::SeqCst) == 0 {
+    let state_lck = app_state.lock().unwrap().clone();
+    let tune = state_lck.tune.lock().unwrap().clone();
+    let ind = state_lck.ind.lock().unwrap().clone();
+    let load = state_lck.load.lock().unwrap().clone();
+    if  *tune.operate.lock().unwrap() == false && *ind.operate.lock().unwrap() == false && *load.operate.lock().unwrap() == false {
         let mut status: String = String::new();
         while let Some(val) = form_data.next_field().await.unwrap() {
             println!("Name: {}", val.name().unwrap().to_string());
@@ -560,7 +563,9 @@ where F:
 //Recalls bands from memory.
 async fn recall(Path(path): Path<String>, State(state): State<Arc<Mutex<AppState>>>) {
     println!("{}", path);
-        if state.lock().unwrap().thread_counter.lock().unwrap().load(Ordering::SeqCst) == 0 { 
+    let state_lck = state.lock().unwrap().clone();
+        if *state_lck.tune.lock().unwrap().operate.lock().unwrap() == false && *state_lck.ind.lock().unwrap().operate.lock().unwrap() == false && *state_lck.load.lock().unwrap().operate.lock().unwrap() == false  {
+            state.lock().unwrap().sleep = true;
             match path.as_str() {
                 "M10" => {
                     if let Ok(_) = recall_handler(state.clone(), "10M".to_string(), Bands::M10) {
@@ -571,28 +576,27 @@ async fn recall(Path(path): Path<String>, State(state): State<Arc<Mutex<AppState
                 }
                 "M11" => {
                     if let Ok(_) = recall_handler(state.clone(), "11M".to_string(), Bands::M11) {
-                        state.lock().unwrap().status = format!("No Encoder Present");
+        
                     } else  {
                         state.lock().unwrap().status = format!("No Encoder Present");
                     }
                 }
                 "M20" => {
                     if let Ok(_) = recall_handler(state.clone(), "20M".to_string(), Bands::M20) {
-                        state.lock().unwrap().status = format!("No Encoder Present");
+            
                     } else  {
                         state.lock().unwrap().status = format!("No Encoder Present");
                     }
                 }
                 "M40" => {
                     if let Ok(_) = recall_handler(state.clone(), "40M".to_string(), Bands::M40) {
-                        state.lock().unwrap().status = format!("No Encoder Present");
+        
                     } else  {
                         state.lock().unwrap().status = format!("No Encoder Present");
                     }
                 }
                 "M80" => {
                     if let Ok(_) = recall_handler(state.clone(), "80M".to_string(), Bands::M80) {
-                        state.lock().unwrap().status = format!("No Encoder Present");
                     } else  {
                         state.lock().unwrap().status = format!("No Encoder Present");
                     }
@@ -789,6 +793,9 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
         let tune = val.tune.lock().unwrap().clone();
         let ind = val.ind.lock().unwrap().clone();
         let load = val.load.lock().unwrap().clone();
+        if *tune.operate.lock().unwrap() == false && *ind.operate.lock().unwrap() == false && *load.operate.lock().unwrap() == false && val.sleep == true {
+            sleep_save(state.clone());
+        }
         if let Some(_) = val.enc {
             let clone = val.enc.clone().unwrap().enc();
             if clone >= 0 {
@@ -798,7 +805,7 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
                             if let Some(_) = tune.pin_a {
                                 //tune.run(clone as u32);
                                 if let Some(ch) = tune.channel.clone() {
-                                    ch.send(clone as u32);
+                                    let _ = ch.send(clone as u32);
                                 }
                             } else {
                                 tune.pos.store(clone, Ordering::Relaxed);
@@ -810,7 +817,7 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
                             if let Some(_) = ind.pin_a {
                                 //ind.run(clone as u32);
                                 if let Some(ch) = ind.channel.clone() {
-                                    ch.send(clone as u32);
+                                    let _ = ch.send(clone as u32);
                                 }
                             } else {
                                 ind.pos.store(clone, Ordering::Relaxed);
@@ -822,7 +829,7 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
                             if let Some(_) = load.pin_a {
                                 //load.run(clone as u32);
                                 if let Some(ch) = load.channel.clone() {
-                                    ch.send(clone as u32);
+                                    let _ = ch.send(clone as u32);
                                 }
                             } else {
                                 load.pos.store(clone, Ordering::Relaxed);
@@ -940,7 +947,6 @@ fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: Bands) 
         state_lck.sw_pos = None;
         state_lck.sleep = true;
         state_lck.enable_pin.lock().unwrap().set_low();
-        let mut counter = state_lck.thread_counter.clone();
         let mut my_locks = [
             state_lck.tune.clone(),
             state_lck.ind.clone(),
@@ -950,23 +956,15 @@ fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: Bands) 
             drop(state_lck);
             for x in my_locks {
                 let value = band.clone();
-                let counter = counter.clone();
                 let state_lck = state.clone();
-                counter.lock().unwrap().store(3,Ordering::SeqCst);
                 thread::spawn(move || {
                     let mut temp_lck = x.lock().unwrap().clone();
                     if let Some(_) = temp_lck.pin_a { 
-                        temp_lck.channel.unwrap().send(temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed) as u32);
+                        let _ = temp_lck.channel.unwrap().send(temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed) as u32);
                     } else {
                         temp_lck.pos.store(temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed), Ordering::Relaxed);
                     }
                     println!("Run thread ended");
-                    counter.lock().unwrap().fetch_sub(1, Ordering::SeqCst);
-                    if counter.lock().unwrap().load(Ordering::SeqCst) == 0 {
-                        //sleep_save(state_lck.clone());
-                        println!("Sleep activation from thread");
-                        
-                    }
 
                 });
                 
@@ -1000,7 +998,6 @@ fn store_handler(state: Arc<Mutex<AppState>>, band: String) {
 
 fn sleep_save(state: Arc<Mutex<AppState>>) {
     let mut state_lck = state.lock().unwrap();
-    state_lck.thread_counter.lock().unwrap().store(0, Ordering::SeqCst);
     state_lck.sleep = false;
     println!("Sleep is: {}", state_lck.sleep);
     state_lck.enable_pin.lock().unwrap().set_high();

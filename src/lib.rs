@@ -98,7 +98,7 @@ pub mod encoder {
 }
 
 pub mod stepper {
-    use async_std::task::sleep;
+    use std::sync::Mutex;
     use std::sync::mpsc::{self, Sender, Receiver};
     use rppal::gpio::{Gpio, Level, Mode};
     use serde::{Deserialize, Serialize};
@@ -108,7 +108,7 @@ pub mod stepper {
         Arc,
         atomic::{AtomicI32, Ordering},
     };
-    use std::thread;
+    use std::thread::{self, sleep};
     use std::time::Duration;
 
     #[derive(Clone)]
@@ -123,7 +123,7 @@ pub mod stepper {
         pub mem: HashMap<String, Arc<AtomicI32>>,
         pub max: Arc<AtomicI32>,
         pub speed: Duration,
-        pub operate: bool,
+        pub operate: Arc<Mutex<bool>>,
     }
     impl Stepper {
         pub fn new(name: &str) -> Self {
@@ -144,7 +144,7 @@ pub mod stepper {
                 ]),
                 max: Arc::new(AtomicI32::new(100000)),
                 speed: Duration::from_micros(100),
-                operate: false,
+                operate: Arc::new(Mutex::new(false)),
             }
         }
         pub fn run(&self, val: u32) {
@@ -198,12 +198,14 @@ pub mod stepper {
             let mut count = 0;
             let pos = self.pos.clone();
             let speed = self.speed.clone();
+            let operate = self.operate.clone();
             thread::spawn(move ||  {
                 loop{
                     println!("Inside loop");
                     if let Ok(val) = rx.recv() {
                         pulse_pin.set_low();
                         if val > pos.load(Ordering::Relaxed) as u32 {
+                            *operate.lock().unwrap() = true;
                             dir = "CW".to_string();
                             dir_pin.set_high();
                             while val > pos.load(Ordering::Relaxed) as u32 {
@@ -215,8 +217,10 @@ pub mod stepper {
                                 if count % 2 == 0 { 
                                     pos.fetch_add(1, Ordering::Relaxed);
                                 }
-                            }
+                            } 
+                            *operate.lock().unwrap() = false;
                         } else if val < pos.load(Ordering::Relaxed) as u32{
+                            *operate.lock().unwrap() = true;
                             dir = "CCW".to_string();
                             dir_pin.set_low();
                             while val < pos.load(Ordering::Relaxed) as u32 {
@@ -229,7 +233,9 @@ pub mod stepper {
                                     pos.fetch_add(-1, Ordering::Relaxed); 
                                 }
                             }
+                            *operate.lock().unwrap() = false;
                         }
+                        
                     }
                 }
             });
