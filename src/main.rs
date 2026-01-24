@@ -1012,7 +1012,7 @@ fn sleep_save(state: Arc<Mutex<AppState>>) {
     state_lck.sw_pos = None;
     let file_path = path::Path::new(&state_lck.file);
     let dir = env::current_dir().unwrap();
-    let full_path = dir.join(file_path);
+    let full_path = dir.join("static").join(file_path);
     if !fs::exists(&full_path).unwrap() {
         let _ = fs::File::create(&full_path);
     }
