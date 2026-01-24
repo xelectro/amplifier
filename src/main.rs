@@ -6,6 +6,7 @@ use axum::extract::multipart::MultipartError;
 use axum::response::sse::KeepAlive;
 use mcp230xx::Mcp23017;
 use mcp230xx;
+use std::env;
 use rppal::gpio::{Gpio, Level, Mode, OutputPin};
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::{
@@ -464,9 +465,10 @@ async fn config_get(State(state): State<Arc<Mutex<AppState>>>) -> Html<String> {
             vec!["None".to_string(), "None".to_string(), 1.to_string()]
         },
         files: {
+            let home_path = env::current_dir().unwrap().join("static");
             let mut output: Vec<String> = Vec::new();
             let files =
-                fs::read_dir(path::Path::new("/home/pi/Documents/Code/rust/amplifier/static")).unwrap();
+                fs::read_dir(home_path).unwrap();
             files.for_each(|f| {
                 let temp_file = f.unwrap().file_name().to_string_lossy().to_string();
                 if temp_file.ends_with("json") {
@@ -659,7 +661,7 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, mut form: Multipart) ->
         let file_name = form_data.get("files").unwrap();
         println!("Filename: {}", file_name);
         let file_path = path::Path::new(file_name);
-        let mut full_path = path::Path::new("/home/pi/Documents/Code/rust/amplifier/static").join(file_path);
+        let mut full_path = env::current_dir().unwrap().join("static").join(file_name);
         if let Ok(file_data) = fs::read_to_string(full_path) {
             let output: StoredData = serde_json::from_str(&file_data).unwrap();
             println!("{:?}", output);
@@ -1009,7 +1011,7 @@ fn sleep_save(state: Arc<Mutex<AppState>>) {
     println!("Sleep_Save Ran");
     state_lck.sw_pos = None;
     let file_path = path::Path::new(&state_lck.file);
-    let dir = path::Path::new("/home/pi/Documents/Code/rust/amplifier/static");
+    let dir = env::current_dir().unwrap();
     let full_path = dir.join(file_path);
     if !fs::exists(&full_path).unwrap() {
         let _ = fs::File::create(&full_path);
