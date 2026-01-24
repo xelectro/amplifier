@@ -301,6 +301,7 @@ async fn config_post(
             } else {
                 handle_stepper(&mut state, form_data,  "Tune", true,|state| state.tune.clone());
                 state.tune.lock().unwrap().run_2();
+                
             }
         }
         else if form_data.contains_key("del_tune") {
@@ -313,6 +314,7 @@ async fn config_post(
                 handle_stepper(&mut state, form_data,  "Ind", true,|state| state.ind.clone()); 
                 //state.ind.lock().unwrap().speed = Duration::from_millis(1)
                 state.ind.lock().unwrap().run_2();
+                
 
             }
         }
@@ -323,8 +325,9 @@ async fn config_post(
             if let Some(_) = state.load.lock().unwrap().pin_a {
                 println!("PinA already initialized for Load");
             } else {
-               handle_stepper(&mut state, form_data,  "Load", true,|state| state.load.clone()); 
-               state.load.lock().unwrap().run_2();
+                handle_stepper(&mut state, form_data,  "Load", true,|state| state.load.clone()); 
+                state.load.lock().unwrap().run_2();
+                
             }
         }
         else if form_data.contains_key("del_load") {
@@ -681,7 +684,9 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, mut form: Multipart) ->
                     println!("Inductor set to lower speed");
                     stepper_lck.speed = Duration::from_micros(400);
                 }
-                stepper_lck.run_2();
+                if let Some(_) = stepper_lck.pin_a {
+                    stepper_lck.run_2();
+                }
                 drop(stepper_lck);
                 for band in bands {
                     let mut stepper_lck = stepper.lock().unwrap();
