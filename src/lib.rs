@@ -201,7 +201,6 @@ pub mod stepper {
             let operate = self.operate.clone();
             thread::spawn(move ||  {
                 loop{
-                    println!("Inside loop");
                     if let Ok(val) = rx.recv() {
                         pulse_pin.set_low();
                         if val > pos.load(Ordering::Relaxed) as u32 {
