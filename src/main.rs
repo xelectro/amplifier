@@ -4,6 +4,7 @@ use amplifier::mcp::{self, Mcp};
 use askama::Template;
 use axum::extract::multipart::MultipartError;
 use axum::response::sse::KeepAlive;
+use futures::TryFutureExt;
 use mcp230xx::Mcp23017;
 use mcp230xx;
 use std::env;
@@ -38,6 +39,7 @@ use tokio::time::{interval, sleep};
 use tokio_stream::StreamExt as TokioStreamExt;
 use tower_http::{services::ServeDir, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use chrono;
 const ENABLE_PIN: u8 = 16;
 
 #[derive(Template)]
@@ -72,6 +74,8 @@ struct SseData {
     screen_a: u32,
     grid_a: u32,
     pwr_btns: HashMap<String, [String; 2]>,
+    call_sign: String,
+    time: String,
     status: String,
 }
 impl SseData {
@@ -102,6 +106,8 @@ impl SseData {
                 ("HV".to_string(), ["OFF".to_string(), "OFF".to_string()]),
                 ("Oper".to_string(), ["OFF".to_string(), "OFF".to_string()]),
             ]),
+            time: String::new(),
+            call_sign: String::from("-----"),
             status: "Hello ALL BAND AMP".to_string(),
         }
     }
@@ -144,6 +150,7 @@ struct AppState {
     enable_pin: Arc<Mutex<OutputPin>>,
     pwr_btns: PwrBtns,
     gpio_pins: Vec<u8>,
+    call_sign: String,
     status: String,
     sender: Sender<String>,
 }
@@ -222,6 +229,7 @@ async fn main() -> Result<(), std::io::Error> {
         gpio_pins: vec![17, 27, 22, 5, 6, 13, 19,
                         26,14, 15, 18, 23, 24, 25,
                         12, 20, 21],
+        call_sign: String::new(),
         status: String::new(),
         sender: tx,
     }));
@@ -292,6 +300,7 @@ async fn config_post(
             let pin_b = state.enc.clone().unwrap().pin_b;
             let _ = process_pins(&mut state.gpio_pins, pin_a, false);
             let _ = process_pins(&mut state.gpio_pins, pin_b, false);
+            *state.enc.clone().unwrap().stop.lock().unwrap() = true;
             state.enc = None;
             state.status = "Encoder has benn deleted!".to_string();
             
@@ -300,39 +309,33 @@ async fn config_post(
             if let Some(_) = state.tune.lock().unwrap().pin_a {
                 println!("PinA already initialized for Tune");
             } else {
-                handle_stepper(&mut state, form_data,  "Tune", true,|state| state.tune.clone());
-                state.tune.lock().unwrap().run_2();
+                handle_stepper(&mut state, form_data.clone(),  "Tune", true,|state| state.tune.clone());
                 
             }
         }
         else if form_data.contains_key("del_tune") {
-            handle_stepper(&mut state, form_data,  "Tune", false, |state| state.tune.clone()); 
+            handle_stepper(&mut state, form_data.clone(),  "Tune", false, |state| state.tune.clone()); 
         }
         else if form_data.contains_key("add_ind") {
             if let Some(_) = state.ind.lock().unwrap().pin_a {
                 println!("PinA already initialized for Ind");
             } else {
-                handle_stepper(&mut state, form_data,  "Ind", true,|state| state.ind.clone()); 
-                //state.ind.lock().unwrap().speed = Duration::from_millis(1)
-                state.ind.lock().unwrap().run_2();
-                
-
+                handle_stepper(&mut state, form_data.clone(),  "Ind", true,|state| state.ind.clone()); 
             }
         }
         else if form_data.contains_key("del_ind") {
-            handle_stepper(&mut state, form_data,  "Ind", false ,|state| state.ind.clone()); 
+            handle_stepper(&mut state, form_data.clone(),  "Ind", false ,|state| state.ind.clone()); 
         }
         else if form_data.contains_key("add_load") {
             if let Some(_) = state.load.lock().unwrap().pin_a {
                 println!("PinA already initialized for Load");
             } else {
-                handle_stepper(&mut state, form_data,  "Load", true,|state| state.load.clone()); 
-                state.load.lock().unwrap().run_2();
+                handle_stepper(&mut state, form_data.clone(),  "Load", true,|state| state.load.clone()); 
                 
             }
         }
         else if form_data.contains_key("del_load") {
-            handle_stepper(&mut state, form_data,  "Load", false ,|state| state.load.clone()); 
+            handle_stepper(&mut state, form_data.clone(),  "Load", false ,|state| state.load.clone()); 
             } 
         else if form_data.contains_key("start") {
             state.sw_pos = None;
@@ -388,20 +391,28 @@ async fn config_post(
         }
     } else {
         if form_data.contains_key("PinA") && form_data.contains_key("PinB") {
-            state.enc = Some(Encoder::new(
-                form_data.get("PinA").unwrap().parse().unwrap(),
-                form_data.get("PinB").unwrap().parse().unwrap(),
-            ));
-            let _ = state.enc.clone().unwrap().run();
-            let _ = process_pins(&mut state.gpio_pins, form_data.get("PinA").unwrap().parse().unwrap(), true);
-            let _ = process_pins(&mut state.gpio_pins, form_data.get("PinB").unwrap().parse().unwrap(), true);
-            println!("Encoder Added");
-            state.status = format!(
-                "Encoder Added on pins: {:?}, {:?}",
-                form_data.get("PinA"),
-                form_data.get("PinB")
-            );
+                if form_data.get("PinA").unwrap() != "" && form_data.get("PinB").unwrap() != "" {
+                let pin_a = form_data.get("PinA").unwrap().parse().unwrap();
+                let pin_b = form_data.get("PinB").unwrap().parse().unwrap();
+                state.enc = Some(Encoder::new(
+                    pin_a,
+                    pin_b,
+                ));
+                let _ = state.enc.clone().unwrap().run();
+                let _ = process_pins(&mut state.gpio_pins, form_data.get("PinA").unwrap().parse().unwrap(), true);
+                let _ = process_pins(&mut state.gpio_pins, form_data.get("PinB").unwrap().parse().unwrap(), true);
+                println!("Encoder Added");
+                state.status = format!(
+                    "Encoder Added on pins: {:?}, {:?}",
+                    form_data.get("PinA").unwrap(),
+                    form_data.get("PinB").unwrap(),
+                );
+            }
         }
+    }
+    if form_data.clone().contains_key("call_sign") {
+        state.call_sign = form_data.get("call_sign").unwrap().clone();
+        println!("Callsign added: {}", state.call_sign);
     }
     Redirect::to("/config")
 }
@@ -673,8 +684,15 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, mut form: Multipart) ->
                 state_lck.load.clone(),
                 ];
             let bands = ["10M", "11M", "20M", "40M", "80M"];
-            let  my_output_arr = [output.tune.clone(), output.ind.clone(), output.load.clone()];
+            let  my_output_arr = [&output.tune, &output.ind, &output.load];
             for (i, stepper) in my_stepper_arr.iter_mut().enumerate() {
+                let name = &stepper.lock().unwrap().name.clone();
+                if stepper.lock().unwrap().pin_a.unwrap_or(0u8) != 0 {
+                    handle_stepper(&mut state_lck, form_data.clone(), name, false, |x| stepper.clone());
+                }
+                thread::sleep(Duration::from_millis(10));
+                println!("Adding PinA: {:?}", stepper.lock().unwrap().pin_a);
+                println!("Adding PinB: {:?}", stepper.lock().unwrap().pin_b);
                 stepper.lock().unwrap().pin_a = if my_output_arr[i].contains_key("PinA") {Some(*my_output_arr[i].get("PinA").unwrap() as u8)} else {None};
                 stepper.lock().unwrap().pin_b = if my_output_arr[i].contains_key("PinB") {Some(*my_output_arr[i].get("PinB").unwrap() as u8)} else {None};
                 stepper.lock().unwrap().ena = if my_output_arr[i].contains_key("ena") {Some(*my_output_arr[i].get("ena").unwrap() as u8)} else {None};
@@ -698,6 +716,10 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, mut form: Multipart) ->
                 }
             }   
             state_lck.enc = if output.enc.contains_key("PinA") && output.enc.contains_key("PinB") {
+                if let Some(enc) = &state_lck.enc {
+                    *enc.stop.lock().unwrap() = true;
+                    println!("Deconfiguring Encoder to load new config");
+                }
                 Some(Encoder::new( 
                     *output.enc.get("PinA").unwrap() as u8,
                     *output.enc.get("PinB").unwrap() as u8,
@@ -796,6 +818,8 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
     println!("Aquire data");
     loop {
         interval.tick().await;
+        let date_time = chrono::offset::Local::now().format("%m-%d-%Y, %H:%M:%S").to_string();
+        let call_sign = state.lock().unwrap().call_sign.clone();
         let val = state.lock().unwrap().clone();
         let tune = val.tune.lock().unwrap().clone();
         let ind = val.ind.lock().unwrap().clone();
@@ -812,7 +836,7 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
                             if let Some(_) = tune.pin_a {
                                 //tune.run(clone as u32);
                                 if let Some(ch) = tune.channel.clone() {
-                                    let _ = ch.send(clone as u32);
+                                    let _ = ch.send((clone as u32, false));
                                 }
                             } else {
                                 tune.pos.store(clone, Ordering::Relaxed);
@@ -824,7 +848,7 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
                             if let Some(_) = ind.pin_a {
                                 //ind.run(clone as u32);
                                 if let Some(ch) = ind.channel.clone() {
-                                    let _ = ch.send(clone as u32);
+                                    let _ = ch.send((clone as u32, false));
                                 }
                             } else {
                                 ind.pos.store(clone, Ordering::Relaxed);
@@ -836,7 +860,7 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
                             if let Some(_) = load.pin_a {
                                 //load.run(clone as u32);
                                 if let Some(ch) = load.channel.clone() {
-                                    let _ = ch.send(clone as u32);
+                                    let _ = ch.send((clone as u32, false));
                                 }
                             } else {
                                 load.pos.store(clone, Ordering::Relaxed);
@@ -850,6 +874,8 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
             }
         }
         let mut sse_output = SseData::new();
+        sse_output.time = date_time;
+        sse_output.call_sign = call_sign;
         sse_output.tune = tune.pos.load(Ordering::Relaxed) as u32;
         sse_output.ind = ind.pos.load(Ordering::Relaxed) as u32;
         sse_output.load = load.pos.load(Ordering::Relaxed) as u32;
@@ -908,25 +934,34 @@ where
     let mut state_stepper = stepper.lock().unwrap();
     if add {
         state.sw_pos = None;
-        let pin_a: u8 = form_data.get("PinA").unwrap().parse().unwrap();
-        let pin_b: u8 = form_data.get("PinB").unwrap().parse().unwrap();
-        let ratio: u8 = form_data.get("ratio").unwrap().parse().unwrap_or(1);
-        state_stepper.name = name.to_string().to_lowercase();
-        state_stepper.pin_a = Some(pin_a);
-        state_stepper.pin_b = Some(pin_b);
-        state_stepper.ratio = ratio;
-        let _ = process_pins(&mut state.gpio_pins, pin_a, true);
-        let _ = process_pins(&mut state.gpio_pins, pin_b, true);
-        if name == "Ind" {
-            state_stepper.speed = Duration::from_micros(400);
+        if form_data.get("PinA").unwrap() != "" && form_data.get("PinB").unwrap() != "" {
+            println!("Adding Stepper");
+            let pin_a: u8 = form_data.get("PinA").unwrap().parse().unwrap();
+            let pin_b: u8 = form_data.get("PinB").unwrap().parse().unwrap();
+            let ratio: u8 = form_data.get("ratio").unwrap().parse().unwrap_or(1);
+            state_stepper.name = name.to_string().to_lowercase();
+            state_stepper.pin_a = Some(pin_a);
+            state_stepper.pin_b = Some(pin_b);
+            state_stepper.ratio = ratio;
+            let _ = process_pins(&mut state.gpio_pins, pin_a, true);
+            let _ = process_pins(&mut state.gpio_pins, pin_b, true);
+            if name == "Ind" {
+                state_stepper.speed = Duration::from_micros(400);
+            }
+            state_stepper.run_2();
+        } else {
+            println!("No pins Selected");
         }
     } else {
+        println!("Resetting {} to default settings", name
+    );
         if let Some(_) = state_stepper.pin_a {
             println!("Deleting {}", state_stepper.name);
             let pin_a = state_stepper.pin_a.unwrap();
             let pin_b = state_stepper.pin_b.unwrap();
             let _ = process_pins(&mut state.gpio_pins, pin_a, false);
             let _ = process_pins(&mut state.gpio_pins, pin_b, false);
+            let _ = state_stepper.channel.clone().unwrap().send((state_stepper.pos.load(Ordering::Relaxed) as u32, true));
             state_stepper.pin_a = None;
             state_stepper.pin_b = None;
             state_stepper.ratio = 1;
@@ -967,7 +1002,7 @@ fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: Bands) 
                 thread::spawn(move || {
                     let mut temp_lck = x.lock().unwrap().clone();
                     if let Some(_) = temp_lck.pin_a { 
-                        let _ = temp_lck.channel.unwrap().send(temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed) as u32);
+                        let _ = temp_lck.channel.unwrap().send((temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed) as u32, false));
                     } else {
                         temp_lck.pos.store(temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed), Ordering::Relaxed);
                     }

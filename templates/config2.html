@@ -130,6 +130,10 @@
   </tr>
 </table>
 <p>Status Bar: {{ val }}</p>
+<form action="#" method="post" enctype="multipart/form-data">
+  <input type="text" name="call_sign">
+  <input type="submit" name="submit" value="Add_callsing">
+</form>
 <form id="select_file" action="/load" method="post" enctype="multipart/form-data">
   <label for="files">Choose a file: </label>
   <select name="files" id="files">

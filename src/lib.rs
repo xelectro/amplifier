@@ -3,7 +3,7 @@ pub mod encoder {
     use rppal::system::DeviceInfo;
     use serde::{Deserialize, Serialize};
     use std::sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicI32, Ordering},
     };
     use std::thread;
@@ -26,6 +26,7 @@ pub mod encoder {
     pub struct Encoder {
         pub pin_a: u8,
         pub pin_b: u8,
+        pub stop: Arc<Mutex<bool>>,
         pub count: Arc<AtomicI32>,
     }
     impl Encoder {
@@ -33,6 +34,7 @@ pub mod encoder {
             Self {
                 pin_a: pina,
                 pin_b: pinb,
+                stop: Arc::new(Mutex::new(false)),
                 count: Arc::new(AtomicI32::new(0)),
             }
         }
@@ -45,17 +47,19 @@ pub mod encoder {
             );
             let master_count = Arc::clone(&self.count);
 
-            //let (tx, rx) = mpsc::channel();
             let pin_a = self.pin_a.clone();
             let pin_b = self.pin_b.clone();
+            let stop = self.stop.clone();
             thread::spawn(move || {
                 let gpio = Gpio::new().unwrap();
                 let pin1 = gpio.get(pin_a).unwrap().into_input_pullup();
                 let pin2 = gpio.get(pin_b).unwrap().into_input_pullup();
 
                 let mut last_clk_state = Level::High;
-
                 loop {
+                    if *stop.lock().unwrap() {
+                        break;
+                    }
                     let state = pin1.read();
                     match state {
                         Level::High => {
@@ -114,7 +118,7 @@ pub mod stepper {
     #[derive(Clone)]
     pub struct Stepper {
         pub name: String,
-        pub channel: Option<Sender<u32>>,
+        pub channel: Option<Sender<(u32, bool)>>,
         pub pin_a: Option<u8>,
         pub pin_b: Option<u8>,
         pub ena: Option<u8>,
@@ -201,7 +205,11 @@ pub mod stepper {
             let operate = self.operate.clone();
             thread::spawn(move ||  {
                 loop{
-                    if let Ok(val) = rx.recv() {
+                    if let Ok((val, stop))  = rx.recv() {
+                        if stop {
+                            println!("Stopping stepper loop to delete stepper.");
+                            break;
+                        }
                         pulse_pin.set_low();
                         if val > pos.load(Ordering::Relaxed) as u32 {
                             *operate.lock().unwrap() = true;

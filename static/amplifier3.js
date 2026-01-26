@@ -2,9 +2,19 @@ let bar_meters = document.getElementById("bar_meters");
 let bar_meter_tune = document.createElement("td");
 let bar_meter_ind = document.createElement("td");
 let bar_meter_load = document.createElement("td");
+let clock = document.createElement("td");
+let clock_data = document.createElement("h3");
+clock_data.setAttribute("style", "color: magenta");
+clock.appendChild(clock_data);
+let call_sign = document.createElement("td");
+let call_sign_data = document.createElement("h1");
+call_sign_data.setAttribute("style", "color: cyan");
+call_sign.appendChild(call_sign_data);
 bar_meters.appendChild(bar_meter_tune);
 bar_meters.appendChild(bar_meter_ind);
 bar_meters.appendChild(bar_meter_load);
+bar_meters.appendChild(clock);
+bar_meters.appendChild(call_sign);
 let meter_tune = document.getElementById("meter_tune");
 let meterReadingElement_tune = document.getElementById("tune");
 let meter_ind = document.getElementById("meter_ind");
@@ -193,6 +203,8 @@ learn_update.onmessage = (e) => {
                 "http://127.0.0.1:8080",
             );
         }
+        clock_data.innerText = meter_values.time;
+        call_sign_data.innerText = meter_values.call_sign;
         bar_meter_tune.innerHTML =
             "<p>Current value = " +
             meter_values.tune +
