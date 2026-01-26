@@ -2,10 +2,23 @@
 <html>
     <head>
         <link rel="stylesheet" href="/static/amplifier.css" />
+        <link rel="stylesheet" href="/static/skin.css" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
     </head>
     <body>
-        <br /><br />
+    <div id="amp_header" class="amp-header">
+      <div class="amp-header-left">
+        <div class="amp-pill"><span class="amp-ico">🌐</span><span id="header_addr">0.0.0.0:0000</span></div>
+        <div class="amp-pill"><span class="amp-dot"></span><span id="header_conn">ONLINE</span></div>
+      </div>
+      <div class="amp-header-center">
+        <div class="amp-pill"><span class="amp-ico">🕒</span><span id="header_clock"></span></div>
+      </div>
+      <div class="amp-header-right">
+        <div class="amp-pill"><span class="amp-ico">📡</span><span id="header_callsign"></span></div>
+      </div>
+    </div>
+
         <table>
             <tr>
                 <th>Tune</th>
