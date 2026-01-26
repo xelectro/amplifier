@@ -57,7 +57,7 @@
 meter,
 meter::-webkit-meter-bar {
     /*to remove the default background property */
-    background: none; 
+    background: none;
     width: 200px;
     height: 25px;
     border-radius: 8px;
@@ -65,30 +65,30 @@ meter::-webkit-meter-bar {
     background-color: rgb(226, 226, 226);
     box-shadow: 0 5px 5px -5px rgba(0,0,0,0.3) inset;
 }
- 
+
 /*for meter bar*/
 meter::-webkit-meter-optimum-value {
-    background: none; 
+    background: none;
     background-color: rgb(154, 255, 77);
 }
 :-moz-meter-optimum::-moz-meter-bar {
-    background: none; 
+    background: none;
     background-color: rgb(154, 255, 77);
 }
- 
- 
+
+
 meter::-webkit-meter-suboptimum-value{
-    background: none; 
+    background: none;
     background-color: rgb(150, 0, 0);
 }
 :-moz-meter-sub-optimum::-moz-meter-bar{
-    background: none; 
+    background: none;
     background-color: rgb(0, 0, 222);
 }
- 
- 
+
+
 meter::-webkit-meter-even-less-good-value{
-    background: none; 
+    background: none;
     background-color: rgb(0, 36, 62);
 }
 :-moz-meter-sub-sub-optimum::-moz-meter-bar{
@@ -172,7 +172,7 @@ table, th, td {
   height: 34px;
 }
 
-.switch input { 
+.switch input {
   opacity: 0;
   width: 0;
   height: 0;
@@ -224,3 +224,80 @@ input:checked + .slider:before {
 .slider.round:before {
   border-radius: 50%;
 }
+/* ===== AMP HEADER (professional top bar) ===== */
+.amp-header{
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  background: #f3f4f6;
+  border-bottom: 1px solid #d1d5db;
+}
+
+.amp-header-left,
+.amp-header-center,
+.amp-header-right{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.amp-header-center{
+  flex: 1;
+  justify-content: center;
+}
+
+.amp-pill{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #e5e7eb;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-size: 14px;
+  color: #111827;
+  line-height: 1;
+}
+
+.amp-ico{
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+.amp-dot{
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34,197,94,0.25);
+}
+
+/* Make the moved elements fit nicely */
+#header_clock h3,
+#header_callsign h1{
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-weight: 600;
+  color: #111827;
+}
+
+#header_callsign h1{
+  font-size: 16px;
+}
+
+#header_clock h3{
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Optional: reduce harsh neon colors you had for clock/callsign */
+#header_clock h3 { color: #374151 !important; }
+#header_callsign h1 { color: #1d4ed8 !important; }
+
+/* ===== end AMP HEADER ===== */
