@@ -120,6 +120,7 @@ struct StoredData {
     enc: HashMap<String, u32>,
     mem: HashMap<String, HashMap<String, u32>>,
     band: Bands,
+    call_sign: String,
 }
 impl StoredData {
     fn new() -> Self {
@@ -130,6 +131,7 @@ impl StoredData {
             enc: HashMap::new(),
             mem: HashMap::new(),
             band: Bands::M10,
+            call_sign: String::from("-----"),
         }
     }
 }
@@ -731,6 +733,7 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, mut form: Multipart) ->
                 let _ = enc.run();
             }
             state_lck.band = output.band;
+            state_lck.call_sign = output.call_sign;
         }
     } else if form_data.contains_key("file_name") {
             let mut file_name = form_data.get("file_name").unwrap().clone().to_string();
@@ -1058,6 +1061,7 @@ fn sleep_save(state: Arc<Mutex<AppState>>) {
     saved_state.mem.entry("ind".to_string()).insert_entry(store_data_creator(&mut state_lck.clone(), &mut saved_state.ind, |x| x.ind.clone()));
     saved_state.mem.entry("load".to_string()).insert_entry(store_data_creator(&mut state_lck.clone(), &mut saved_state.load, |x| x.load.clone()));
     saved_state.band = state_lck.band.clone();
+    saved_state.call_sign = state_lck.call_sign.clone();
     println!("Attempting to save data");
     if let Ok(output_data) = serde_json::to_string_pretty(&saved_state) {
         println!("Saving file to {}", full_path.to_string_lossy().to_string());
