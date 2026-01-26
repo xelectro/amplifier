@@ -1,7 +1,3 @@
-([Past chat][1])([Past chat][2])([Past chat][3])([Past chat][4])([Past chat][5])
-
-Here’s a **drop-in `README.md`** that captures the “state of the build” vibe, plus a clear **directory structure** section. It’s written to fit the **Rust + Raspberry Pi + web UI** style we’ve been working in, and it includes the practical gotchas we kept tripping over (paths, GPIO/I²C, services, etc.).
-
 ````md
 # HF Amp Automation (Raspberry Pi Controller + Web UI)
 
