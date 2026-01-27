@@ -24,3 +24,16 @@ static/ui-polish.css
 static/jerry.json
 static/skin.css
 static/ui-polish.css
+
+# editor/backup junk
+*.bak
+*.bak.*
+*~
+*.swp
+*.tmp
+*.orig
+
+# local scratch UI files
+static/jerry.json
+static/skin.css
+static/ui-polish.css
