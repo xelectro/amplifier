@@ -2,28 +2,10 @@
 <html>
     <head>
         <link rel="stylesheet" href="/static/amplifier.css" />
-<<<<<<< Updated upstream
-        <link rel="stylesheet" href="/static/skin.css" />
-=======
-        <link rel="stylesheet" href="/static/ui-polish.css" />
-<link rel="stylesheet" href="/static/skin.css" />
->>>>>>> Stashed changes
         <meta name="viewport" content="width=device-width, initial-scale=1" />
     </head>
     <body>
-    <div id="amp_header" class="amp-header">
-      <div class="amp-header-left">
-        <div class="amp-pill"><span class="amp-ico">🌐</span><span id="header_addr">0.0.0.0:0000</span></div>
-        <div class="amp-pill"><span class="amp-dot"></span><span id="header_conn">ONLINE</span></div>
-      </div>
-      <div class="amp-header-center">
-        <div class="amp-pill"><span class="amp-ico">🕒</span><span id="header_clock"></span></div>
-      </div>
-      <div class="amp-header-right">
-        <div class="amp-pill"><span class="amp-ico">📡</span><span id="header_callsign"></span></div>
-      </div>
-    </div>
-
+        <br /><br />
         <table>
             <tr>
                 <th>Tune</th>
@@ -97,8 +79,7 @@
             <tr id="bar_meters"></tr>
             <tr>
                 <td>
-                    <div class="bottom-actions">
-<button
+                    <button
                         class="button"
                         id="tune_button"
                         type="submit"
@@ -184,7 +165,6 @@
         >
             Config
         </button>
-</div>
     </body>
     <script src="/static/amplifier3.js" type="text/javascript"></script>
 </html>

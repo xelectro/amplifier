@@ -1,0 +1,57 @@
+/* skin.css — visual polish only. No layout tricks, no JS dependencies. */
+
+:root{
+  --page:#f4f6f9;
+  --card:#ffffff;
+  --border:#d7deea;
+  --text:#111827;
+  --muted:#6b7280;
+  --accent:#2563eb;
+  --ok:#16a34a;
+}
+
+html, body{
+  margin:0;
+  padding:0;
+  background: var(--page);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+table, th, td{
+  border-color: var(--border) !important;   /* replaces green */
+}
+
+th{
+  background: linear-gradient(#fbfcfe, #f3f6fb);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-size: 13px;
+}
+
+.button{
+  color: #0f172a !important;
+  border: 1px solid var(--border) !important;
+  background: linear-gradient(#ffffff,#f4f7fb) !important;
+  box-shadow: 0 1px 2px rgba(16,24,40,.08) !important;
+}
+
+.hover_not_disabled{
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+.active{
+  box-shadow: 0 0.2rem rgba(37,99,235,.25) !important;
+}
+
+#plate_volts, #plate_amps, #screen_amps, #grid_amps{
+  --color: var(--ok) !important;            /* overrides inline lime */
+}
+
+#status_bar{
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}

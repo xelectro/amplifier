@@ -10,23 +10,6 @@ let call_sign = document.createElement("td");
 let call_sign_data = document.createElement("h1");
 call_sign_data.setAttribute("style", "color: cyan");
 call_sign.appendChild(call_sign_data);
-
-// Move clock/callsign into the header placeholders (no behavior change)
-const headerAddr = document.getElementById("header_addr");
-if (headerAddr) { headerAddr.textContent = window.location.host; }
-
-const headerClock = document.getElementById("header_clock");
-if (headerClock) {
-    headerClock.replaceChildren(clock_data);
-    clock.style.display = "none";  // keep table layout stable
-}
-
-const headerCall = document.getElementById("header_callsign");
-if (headerCall) {
-    headerCall.replaceChildren(call_sign_data);
-    call_sign.style.display = "none";  // keep table layout stable
-}
-
 bar_meters.appendChild(bar_meter_tune);
 bar_meters.appendChild(bar_meter_ind);
 bar_meters.appendChild(bar_meter_load);
@@ -362,11 +345,7 @@ function displayReading(val, ratio) {
 setTimeout(startMeterAnimation, 1000);
 function startMeterAnimation() {
     setInterval(() => {
-<<<<<<< Updated upstream
-
-=======
         
->>>>>>> Stashed changes
           if (!meter_values || !meter_values.ratio) { return; }
 meterReadingElement_tune.innerText = displayReading(
             meter_values.tune,
