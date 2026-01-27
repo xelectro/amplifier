@@ -103,15 +103,11 @@ pub mod encoder {
 
 pub mod stepper {
     use std::sync::Mutex;
-    use std::sync::mpsc::{self, Sender, Receiver};
+    use std::sync::{Arc, mpsc::{self, Receiver, Sender, SyncSender}, atomic::{AtomicI32, Ordering}};
     use rppal::gpio::{Gpio, Level, Mode};
     use serde::{Deserialize, Serialize};
     use core::time;
     use std::collections::HashMap;
-    use std::sync::{
-        Arc,
-        atomic::{AtomicI32, Ordering},
-    };
     use std::thread::{self, sleep};
     use std::time::Duration;
 

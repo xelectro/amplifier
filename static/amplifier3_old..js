@@ -10,23 +10,6 @@ let call_sign = document.createElement("td");
 let call_sign_data = document.createElement("h1");
 call_sign_data.setAttribute("style", "color: cyan");
 call_sign.appendChild(call_sign_data);
-
-// Move clock/callsign into the header placeholders (no behavior change)
-const headerAddr = document.getElementById("header_addr");
-if (headerAddr) { headerAddr.textContent = window.location.host; }
-
-const headerClock = document.getElementById("header_clock");
-if (headerClock) {
-    headerClock.replaceChildren(clock_data);
-    clock.style.display = "none";  // keep table layout stable
-}
-
-const headerCall = document.getElementById("header_callsign");
-if (headerCall) {
-    headerCall.replaceChildren(call_sign_data);
-    call_sign.style.display = "none";  // keep table layout stable
-}
-
 bar_meters.appendChild(bar_meter_tune);
 bar_meters.appendChild(bar_meter_ind);
 bar_meters.appendChild(bar_meter_load);
@@ -64,7 +47,6 @@ const tuneBtn = document.getElementById("tune_button");
 const indBtn = document.getElementById("ind_button");
 const loadBtn = document.getElementById("load_button");
 const bandSelectors = document.getElementById("band_selectors");
-    bandSelectors.replaceChildren();
 const bands = ["M10", "M11", "M20", "M40", "M80"];
 bands.forEach((band, i) => {
     console.log(band);
@@ -129,10 +111,7 @@ function pwrBtnAction(event) {
     if (event.target.name == "Fil" || event.target.name == "HV") {
         formData.append("delay", "OFF");
     }
-
-    if (meter_values && meter_values.pwr_btns && meter_values.pwr_btns[event.target.name]) {
-        console.log(meter_values.pwr_btns[event.target.name][0]);
-    }
+    console.log(meter_values.pwr_btns[event.target.name][0]);
     if (event.target.name == "Fil" || event.target.name == "HV") {
         if (event.target.checked) {
             fetch("/pwr_btn", {
@@ -362,9 +341,7 @@ function displayReading(val, ratio) {
 setTimeout(startMeterAnimation, 1000);
 function startMeterAnimation() {
     setInterval(() => {
-
-          if (!meter_values || !meter_values.ratio) { return; }
-meterReadingElement_tune.innerText = displayReading(
+        meterReadingElement_tune.innerText = displayReading(
             meter_values.tune,
             meter_values.ratio.tune,
         )[0];
