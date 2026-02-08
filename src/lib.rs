@@ -1,4 +1,4 @@
-pub mod encoder {
+pub mod encoder_old {
     use rppal::gpio::{Gpio, Level};
     use rppal::system::DeviceInfo;
     use std::sync::{
@@ -94,6 +94,89 @@ pub mod encoder {
             */
             Ok(())
         }
+        pub fn enc(&self) -> i32 {
+            self.count.load(Ordering::Relaxed)
+        }
+    }
+}
+
+pub mod encoder {
+    use rppal::gpio::{Gpio, Level, Trigger};
+    use rppal::system::DeviceInfo;
+    use std::sync::{
+        atomic::{AtomicI32, Ordering},
+        Arc, Mutex,
+    };
+    use std::thread;
+    use std::time::Duration;
+    extern crate rppal;
+
+    #[derive(Clone)]
+    pub struct Encoder {
+        pub pin_a: u8,
+        pub pin_b: u8,
+        pub stop: Arc<Mutex<bool>>,
+        pub count: Arc<AtomicI32>,
+    }
+
+    impl Encoder {
+        pub fn new(pina: u8, pinb: u8) -> Self {
+            Self {
+                pin_a: pina,
+                pin_b: pinb,
+                stop: Arc::new(Mutex::new(false)),
+                count: Arc::new(AtomicI32::new(0)),
+            }
+        }
+
+        pub fn run(&mut self) -> Result<(), Box<::rppal::gpio::Error>> {
+            let device_info = DeviceInfo::new().unwrap();
+            println!(
+                "Model: {} (SoC: {})",
+                device_info.model(),
+                device_info.soc()
+            );
+
+            let master_count = Arc::clone(&self.count);
+
+            let pin_a = self.pin_a;
+            let pin_b = self.pin_b;
+            let stop = self.stop.clone();
+
+            thread::spawn(move || {
+                let gpio = Gpio::new().unwrap();
+
+                // Keep these pin objects alive for the lifetime of the thread.
+                let mut pin1 = gpio.get(pin_a).unwrap().into_input_pullup(); // A
+                let pin2 = gpio.get(pin_b).unwrap().into_input_pullup();     // B
+
+                // Interrupt ONLY on pin1 (A), read pin2 (B) for direction.
+                pin1
+                    .set_async_interrupt(Trigger::RisingEdge, None,move |_| {
+                        // Preserve your existing direction convention:
+                        // if B is Low at A rising -> +1 else -1
+                        if let Level::Low = pin2.read() {
+                            master_count.fetch_add(1, Ordering::Relaxed);
+                        } else {
+                            master_count.fetch_add(-1, Ordering::Relaxed);
+                        }
+                    })
+                    .unwrap();
+
+                // Keep thread alive; stop flag ends it cleanly.
+                loop {
+                    if *stop.lock().unwrap() {
+                        // Stop interrupts before exiting the thread.
+                        pin1.clear_async_interrupt().ok();
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
+            });
+
+            Ok(())
+        }
+
         pub fn enc(&self) -> i32 {
             self.count.load(Ordering::Relaxed)
         }

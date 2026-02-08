@@ -205,7 +205,7 @@ impl PwrBtns {
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    let (tx, _rx) = broadcast::channel(1024);
+    let (tx, _rx) = broadcast::channel(4);
     let app_state = Arc::new(Mutex::new(AppState {
         tune: Arc::new(Mutex::new(Stepper::new("tune"))),
         ind: Arc::new(Mutex::new(Stepper::new("ind"))),
@@ -801,8 +801,8 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
     loop {
         interval.tick().await;
         let date_time = chrono::offset::Local::now().format("%m-%d-%Y, %H:%M:%S").to_string();
-        let call_sign = state.lock().unwrap().call_sign.clone();
         let val = state.lock().unwrap().clone();
+        let call_sign = state.lock().unwrap().call_sign.clone();
         let tune = val.tune.lock().unwrap().clone();
         let ind = val.ind.lock().unwrap().clone();
         let load = val.load.lock().unwrap().clone();
