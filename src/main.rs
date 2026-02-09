@@ -704,7 +704,13 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, form: Multipart) ->
             }   
             state_lck.enc = if output.enc.contains_key("PinA") && output.enc.contains_key("PinB") {
                 if let Some(enc) = &state_lck.enc {
+                    let pin_a = enc.pin_a;
+                    let pin_b = enc.pin_b;
+                    let _ = process_pins(&mut state_lck.clone().gpio_pins, pin_a, false);
+                    let _ = process_pins(&mut state_lck.clone().gpio_pins, pin_b, false);
                     *enc.stop.lock().unwrap() = true;
+                    thread::sleep(Duration::from_millis(50));
+                    state_lck.enc = None;
                     println!("Deconfiguring Encoder to load new config");
                 }
                 Some(Encoder::new( 
@@ -716,6 +722,7 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, form: Multipart) ->
             };
             if let Some(mut enc) = state_lck.enc.clone() {
                 let _ = enc.run();
+                println!("Ecoder Run activated from File load Fn");
             }
             state_lck.band = output.band;
             state_lck.call_sign = output.call_sign;
@@ -750,10 +757,17 @@ async fn pwr_btn_handler(State(state): State<Arc<Mutex<AppState>>>, form: Multip
 
             }
             "Fil" => {
-                step_start(&mut state.lock().unwrap(), form_data,"Filament".to_string(), |x| x.pwr_btns.Fil);
+                match step_start(&mut state.lock().unwrap(), form_data,"Filament".to_string(), |x| x.pwr_btns.Fil) {
+                    Ok(_) => {},
+                    Err(e) => {println!("Error occured in Fillament Step start: {}", e);
+                                    }
+                }
             }
             "HV" => {
-                step_start(&mut state.lock().unwrap(), form_data,"HV".to_string(), |x| x.pwr_btns.HV);
+                match step_start(&mut state.lock().unwrap(), form_data,"HV".to_string(), |x| x.pwr_btns.HV) {
+                    Ok(_) => {},
+                    Err(e) => println!("Error occured in HV Step Start: {}", e),
+                }
                 
             }
             "Oper" => {
@@ -770,7 +784,7 @@ async fn pwr_btn_handler(State(state): State<Arc<Mutex<AppState>>>, form: Multip
 }
 
 //step start helper function
-fn step_start<F>(state_lck: &mut AppState, form_data: HashMap<String, String>, name: String, callback: F)
+fn step_start<F>(state_lck: &mut AppState, form_data: HashMap<String, String>, name: String, callback: F)-> Result<(), Box< dyn std::error::Error>>
 where
     F: Fn(&mut AppState) -> [Mcp23017;2],
     {
@@ -778,7 +792,7 @@ where
         let my_btns = callback(state_lck);
         let pin1 = my_btns[0];
         let pin2 = my_btns[1];
-        let pin1_status = state_lck.pwr_btns.mcp.read_pin(pin1).unwrap();
+        let pin1_status = state_lck.pwr_btns.mcp.read_pin(pin1)?;
         let _ = state_lck.pwr_btns.mcp.set_pin(pin1, if action == "ON" {mcp230xx::Level::High} else {mcp230xx::Level::Low});  
         if form_data.contains_key("delay") {
             let delay = form_data.get("delay").unwrap();
@@ -791,6 +805,7 @@ where
                 format!("{} Shutting Down...", name)
             });
         } 
+        Ok(())
     }
     
 // Aquires data from peripheral devices and feeds SSE via a broadcast channel.

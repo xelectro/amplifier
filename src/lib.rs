@@ -152,7 +152,7 @@ pub mod encoder {
 
                 // Interrupt ONLY on pin1 (A), read pin2 (B) for direction.
                 pin1
-                    .set_async_interrupt(Trigger::RisingEdge, None,move |_| {
+                    .set_async_interrupt(Trigger::RisingEdge, None, move |_| {
                         // Preserve your existing direction convention:
                         // if B is Low at A rising -> +1 else -1
                         if let Level::Low = pin2.read() {
@@ -167,6 +167,7 @@ pub mod encoder {
                 loop {
                     if *stop.lock().unwrap() {
                         // Stop interrupts before exiting the thread.
+                        println!("Stop Encoder");
                         pin1.clear_async_interrupt().ok();
                         break;
                     }
