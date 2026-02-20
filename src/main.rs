@@ -25,10 +25,10 @@ use std::fs;
 use std::io::Error;
 use std::path;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::{convert::Infallible, path::PathBuf, time::Duration};
-use tokio::sync::broadcast::{self, Sender};
+use tokio::sync::{broadcast::{self, Sender}, Mutex};
 use tokio::io;
 use tokio::time::interval;
 use tower_http::{services::ServeDir, trace::TraceLayer};
@@ -290,7 +290,7 @@ async fn config_post(
     form: Multipart,
 ) -> impl IntoResponse {
     let form_data = process_form(form).await;
-    let mut state = state.lock().unwrap();
+    let mut state = state.lock().await;
     println!("FormData: {:?}", form_data);
     if let Some(_) = state.enc  {
         if form_data.contains_key("del_enc") {
@@ -304,50 +304,50 @@ async fn config_post(
             
         }
         else if form_data.contains_key("add_tune") {
-            if let Some(_) = state.tune.lock().unwrap().pin_a {
+            if let Some(_) = state.tune.lock().await.pin_a {
                 println!("PinA already initialized for Tune");
             } else {
-                handle_stepper(&mut state, form_data.clone(),  "Tune", true,|state| state.tune.clone());
+                handle_stepper(&mut state, form_data.clone(),  "Tune", true,|state| state.tune.clone()).await;
                 
             }
         }
         else if form_data.contains_key("del_tune") {
-            handle_stepper(&mut state, form_data.clone(),  "Tune", false, |state| state.tune.clone()); 
+            handle_stepper(&mut state, form_data.clone(),  "Tune", false, |state| state.tune.clone()).await; 
         }
         else if form_data.contains_key("add_ind") {
-            if let Some(_) = state.ind.lock().unwrap().pin_a {
+            if let Some(_) = state.ind.lock().await.pin_a {
                 println!("PinA already initialized for Ind");
             } else {
-                handle_stepper(&mut state, form_data.clone(),  "Ind", true,|state| state.ind.clone()); 
+                handle_stepper(&mut state, form_data.clone(),  "Ind", true,|state| state.ind.clone()).await; 
             }
         }
         else if form_data.contains_key("del_ind") {
-            handle_stepper(&mut state, form_data.clone(),  "Ind", false ,|state| state.ind.clone()); 
+            handle_stepper(&mut state, form_data.clone(),  "Ind", false ,|state| state.ind.clone()).await; 
         }
         else if form_data.contains_key("add_load") {
-            if let Some(_) = state.load.lock().unwrap().pin_a {
+            if let Some(_) = state.load.lock().await.pin_a {
                 println!("PinA already initialized for Load");
             } else {
-                handle_stepper(&mut state, form_data.clone(),  "Load", true,|state| state.load.clone()); 
+                handle_stepper(&mut state, form_data.clone(),  "Load", true,|state| state.load.clone()).await; 
                 
             }
         }
         else if form_data.contains_key("del_load") {
-            handle_stepper(&mut state, form_data.clone(),  "Load", false ,|state| state.load.clone()); 
+            handle_stepper(&mut state, form_data.clone(),  "Load", false ,|state| state.load.clone()).await; 
             } 
         else if form_data.contains_key("start") {
             state.sw_pos = None;
             match form_data.get("start").unwrap().as_str() {
                 "tune" => {
-                    let state_tune = state.tune.lock().unwrap();
+                    let state_tune = state.tune.lock().await;
                     state_tune.pos.store(0, Ordering::Relaxed);
                 }
                 "ind" => {
-                    let state_ind = state.ind.lock().unwrap();
+                    let state_ind = state.ind.lock().await;
                     state_ind.pos.store(0, Ordering::Relaxed);
                 }
                 "load" => {
-                    let state_load = state.load.lock().unwrap();
+                    let state_load = state.load.lock().await;
                     state_load.pos.store(0, Ordering::Relaxed);
                 }
                 _ => println!("Invalid argument")
@@ -356,15 +356,15 @@ async fn config_post(
         else if form_data.contains_key("max") {
             match form_data.get("max").unwrap().as_str() {
                 "tune" => {
-                    let state_tune = state.tune.lock().unwrap();
+                    let state_tune = state.tune.lock().await;
                     state_tune.max.store(state_tune.pos.load(Ordering::Relaxed), Ordering::Relaxed);
                 }
                 "ind" => {
-                    let state_ind = state.ind.lock().unwrap();
+                    let state_ind = state.ind.lock().await;
                     state_ind.max.store(state_ind.pos.load(Ordering::Relaxed), Ordering::Relaxed);
                 }
                 "load" => {
-                    let state_load = state.load.lock().unwrap();
+                    let state_load = state.load.lock().await;
                     state_load.max.store(state_load.pos.load(Ordering::Relaxed), Ordering::Relaxed);
                 }
                 _ => println!("Invalid argument") 
@@ -373,15 +373,15 @@ async fn config_post(
         }  else if form_data.contains_key("reset") {
             match form_data.get("reset").unwrap().as_str() {
                 "tune" => {
-                    let state_tune = state.tune.lock().unwrap();
+                    let state_tune = state.tune.lock().await;
                     state_tune.max.store(100000, Ordering::Relaxed);
                 }
                 "ind" => {
-                    let state_ind = state.ind.lock().unwrap();
+                    let state_ind = state.ind.lock().await;
                     state_ind.max.store(100000, Ordering::Relaxed);
                 }
                 "load" => {
-                    let state_load = state.load.lock().unwrap();
+                    let state_load = state.load.lock().await;
                     state_load.max.store(100000, Ordering::Relaxed);
                 }
                 _ => println!("Invalid argument")
@@ -432,10 +432,10 @@ fn process_pins(pin_list: &mut Vec<u8>, val: u8, remove: bool) -> Result<(), Box
 // Route handler for GET request for config page.
 async fn config_get(State(state): State<Arc<Mutex<AppState>>>) -> Html<String> {
     println!("Config get was called.");
-    let state = state.lock().unwrap();
-    let tune = state.tune.lock().unwrap();
-    let ind = state.ind.lock().unwrap();
-    let load = state.load.lock().unwrap();
+    let state = state.lock().await;
+    let tune = state.tune.lock().await;
+    let ind = state.ind.lock().await;
+    let load = state.load.lock().await;
     let template = ConfigTemplate {
         enc: if let Some(_) = state.enc { true } else { false },
         enc_val: if let Some(_) = state.enc {
@@ -495,7 +495,7 @@ async fn sse_handler(
     TypedHeader(_): TypedHeader<headers::UserAgent>,
     State(app_state): State<Arc<Mutex<AppState>>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let state_lck = app_state.lock().unwrap();
+    let state_lck = app_state.lock().await;
     let mut rx = state_lck.sender.subscribe();
     Sse::new(stream! {
         while let Ok(msg) = rx.recv().await {
@@ -512,25 +512,25 @@ async fn selector(
 ) -> impl IntoResponse {
     println!("Form handler");
     println!("{}", val);
-    app_state.lock().unwrap().enable_pin.lock().unwrap().set_low();
-    let state_lck = app_state.lock().unwrap().clone();
-    let tune = state_lck.tune.lock().unwrap().clone();
-    let ind = state_lck.ind.lock().unwrap().clone();
-    let load = state_lck.load.lock().unwrap().clone();
+    app_state.lock().await.enable_pin.lock().await.set_low();
+    let state_lck = app_state.lock().await.clone();
+    let tune = state_lck.tune.lock().await.clone();
+    let ind = state_lck.ind.lock().await.clone();
+    let load = state_lck.load.lock().await.clone();
     if  *tune.operate.lock().unwrap() == false && *ind.operate.lock().unwrap() == false && *load.operate.lock().unwrap() == false {
         while let Some(val) = form_data.next_field().await.unwrap() {
             println!("Name: {}", val.name().unwrap().to_string());
             match val.name().unwrap() {
                 "tune" => {
-                    let mut state = app_state.lock().unwrap();
-                    if let Ok(_) = selector_handler(&mut state, |x| x.tune.clone()) {
+                    let mut state = app_state.lock().await;
+                    if let Ok(_) = selector_handler(&mut state, |x| x.tune.clone()).await {
                         state.status = "Tune is selected".to_string();
                         state.sw_pos = Some(Select::Tune);
                     }
                 }
                 "ind" => {
-                    let mut state = app_state.lock().unwrap();
-                    if let Ok(_) = selector_handler(&mut state, |x| x.ind.clone()) {
+                    let mut state = app_state.lock().await;
+                    if let Ok(_) = selector_handler(&mut state, |x| x.ind.clone()).await {
                         state.status = "Ind is selected".to_string();
                         state.sw_pos = Some(Select::Ind);
                         
@@ -538,8 +538,8 @@ async fn selector(
                     }
                 }
                 "load" => {
-                    let mut state = app_state.lock().unwrap();
-                    if let Ok(_) = selector_handler(&mut state, |x| x.load.clone()) {
+                    let mut state = app_state.lock().await;
+                    if let Ok(_) = selector_handler(&mut state, |x| x.load.clone()).await {
                         state.status = "Load is selected".to_string();
                         state.sw_pos = Some(Select::Load);
                     }
@@ -551,18 +551,18 @@ async fn selector(
             }
         }
     } else {
-        app_state.lock().unwrap().status = format!("Cannot select a tuner while tune is in progress ! ! !");
+        app_state.lock().await.status = format!("Cannot select a tuner while tune is in progress ! ! !");
     }
     StatusCode::OK
 }
 
-fn selector_handler<F>(state: &mut AppState,  callback: F) -> Result<(), Box<dyn std::error::Error>>
+async fn selector_handler<F>(state: &mut AppState,  callback: F) -> Result<(), Box<dyn std::error::Error>>
 where F:
         Fn(&mut AppState) -> Arc<Mutex<Stepper>> {
     let _ = state.meter_sender.clone().unwrap().send(false);
     let stepper = callback(state);
     if let Some(enc) = state.clone().enc {
-        enc.count.store(stepper.clone().lock().unwrap().pos.load(Ordering::Relaxed), Ordering::Relaxed);
+        enc.count.store(stepper.clone().lock().await.pos.load(Ordering::Relaxed), Ordering::Relaxed);
         return Ok(())
     } else {
         state.status = format!("No Encoder present! ! !");
@@ -574,42 +574,42 @@ where F:
 //Recalls bands from memory.
 async fn recall(Path(path): Path<String>, State(state): State<Arc<Mutex<AppState>>>) {
     println!("{}", path);
-    let state_lck = state.lock().unwrap().clone();
-        if *state_lck.tune.lock().unwrap().operate.lock().unwrap() == false && *state_lck.ind.lock().unwrap().operate.lock().unwrap() == false && *state_lck.load.lock().unwrap().operate.lock().unwrap() == false  {
-            state.lock().unwrap().sleep = true;
+    let state_lck = state.lock().await.clone();
+        if *state_lck.tune.lock().await.operate.lock().unwrap() == false && *state_lck.ind.lock().await.operate.lock().unwrap() == false && *state_lck.load.lock().await.operate.lock().unwrap() == false  {
+            state.lock().await.sleep = true;
             match path.as_str() {
                 "M10" => {
-                    if let Ok(_) = recall_handler(state.clone(), "10M".to_string(), Bands::M10) {
+                    if let Ok(_) = recall_handler(state.clone(), "10M".to_string(), Bands::M10).await {
                         
                     } else  {
-                        state.lock().unwrap().status = format!("No Encoder Present");
+                        state.lock().await.status = format!("No Encoder Present");
                     }
                 }
                 "M11" => {
-                    if let Ok(_) = recall_handler(state.clone(), "11M".to_string(), Bands::M11) {
+                    if let Ok(_) = recall_handler(state.clone(), "11M".to_string(), Bands::M11).await {
         
                     } else  {
-                        state.lock().unwrap().status = format!("No Encoder Present");
+                        state.lock().await.status = format!("No Encoder Present");
                     }
                 }
                 "M20" => {
-                    if let Ok(_) = recall_handler(state.clone(), "20M".to_string(), Bands::M20) {
+                    if let Ok(_) = recall_handler(state.clone(), "20M".to_string(), Bands::M20).await {
             
                     } else  {
-                        state.lock().unwrap().status = format!("No Encoder Present");
+                        state.lock().await.status = format!("No Encoder Present");
                     }
                 }
                 "M40" => {
-                    if let Ok(_) = recall_handler(state.clone(), "40M".to_string(), Bands::M40) {
+                    if let Ok(_) = recall_handler(state.clone(), "40M".to_string(), Bands::M40).await {
         
                     } else  {
-                        state.lock().unwrap().status = format!("No Encoder Present");
+                        state.lock().await.status = format!("No Encoder Present");
                     }
                 }
                 "M80" => {
-                    if let Ok(_) = recall_handler(state.clone(), "80M".to_string(), Bands::M80) {
+                    if let Ok(_) = recall_handler(state.clone(), "80M".to_string(), Bands::M80).await {
                     } else  {
-                        state.lock().unwrap().status = format!("No Encoder Present");
+                        state.lock().await.status = format!("No Encoder Present");
                     }
                 }
                 _ => {
@@ -617,7 +617,7 @@ async fn recall(Path(path): Path<String>, State(state): State<Arc<Mutex<AppState
                 }
             }
         } else {
-        state.lock().unwrap().status = format!("Attempted to recall while motors still in motion!!");
+        state.lock().await.status = format!("Attempted to recall while motors still in motion!!");
     }
 }
 // Saves data to JSON file from AppState.
@@ -626,19 +626,19 @@ async fn store(Path(path): Path<String>, State(state): State<Arc<Mutex<AppState>
     println!("{}", path);
     match path.as_str() {
         "M10" => {
-            store_handler(state, "10M".to_string());
+            store_handler(state, "10M".to_string()).await;
         }
         "M11" => {
-            store_handler(state, "11M".to_string());
+            store_handler(state, "11M".to_string()).await;
         }
         "M20" => {
-            store_handler(state, "20M".to_string());
+            store_handler(state, "20M".to_string()).await;
         }
         "M40" => {
-            store_handler(state, "40M".to_string());
+            store_handler(state, "40M".to_string()).await;
         }
         "M80" => {
-            store_handler(state, "80M".to_string());
+            store_handler(state, "80M".to_string()).await;
         }
         _ => {
             println!("Invalid band selected!!")
@@ -648,7 +648,7 @@ async fn store(Path(path): Path<String>, State(state): State<Arc<Mutex<AppState>
 
 async fn stop(State(state): State<Arc<Mutex<AppState>>>) {
     println!("Save stop request received");
-    sleep_save(state);
+    sleep_save(state).await;
 
 }
 // Loads data from config file and initialized AppState.
@@ -663,7 +663,7 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, form: Multipart) ->
         if let Ok(file_data) = fs::read_to_string(full_path) {
             let output: StoredData = serde_json::from_str(&file_data).unwrap();
             println!("{:?}", output);
-            let mut state_lck = state.lock().unwrap();
+            let mut state_lck = state.lock().await;
             state_lck.file = file_name.to_string();
             let mut my_stepper_arr = [
                 state_lck.tune.clone(),
@@ -673,20 +673,19 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, form: Multipart) ->
             let bands = ["10M", "11M", "20M", "40M", "80M"];
             let  my_output_arr = [&output.tune, &output.ind, &output.load];
             for (i, stepper) in my_stepper_arr.iter_mut().enumerate() {
-                let name = &stepper.lock().unwrap().name.clone();
-                if stepper.lock().unwrap().pin_a.unwrap_or(0u8) != 0 {
-                    handle_stepper(&mut state_lck, form_data.clone(), name, false, |_x| stepper.clone());
-                }
-                thread::sleep(Duration::from_millis(10));
-                println!("Adding PinA: {:?}", stepper.lock().unwrap().pin_a);
-                println!("Adding PinB: {:?}", stepper.lock().unwrap().pin_b);
-                stepper.lock().unwrap().pin_a = if my_output_arr[i].contains_key("PinA") {Some(*my_output_arr[i].get("PinA").unwrap() as u8)} else {None};
-                stepper.lock().unwrap().pin_b = if my_output_arr[i].contains_key("PinB") {Some(*my_output_arr[i].get("PinB").unwrap() as u8)} else {None};
-                stepper.lock().unwrap().ena = if my_output_arr[i].contains_key("ena") {Some(*my_output_arr[i].get("ena").unwrap() as u8)} else {None};
-                stepper.lock().unwrap().max.store(*my_output_arr[i].get("max").unwrap() as i32, Ordering::Relaxed);
-                stepper.lock().unwrap().pos.store(*my_output_arr[i].get("pos").unwrap() as i32, Ordering::Relaxed);
-                stepper.lock().unwrap().ratio = *my_output_arr[i].get("ratio").unwrap() as u8;
-                let mut stepper_lck = stepper.lock().unwrap();
+                let name = &stepper.lock().await.clone().name;
+                handle_stepper(&mut state_lck, form_data.clone(), name, false, |_x| stepper.clone()).await;
+                println!("TEST AREA");
+                interval(Duration::from_millis(10)).tick().await;
+                println!("Adding PinA: {:?}", stepper.lock().await.pin_a);
+                println!("Adding PinB: {:?}", stepper.lock().await.pin_b);
+                stepper.lock().await.pin_a = if my_output_arr[i].contains_key("PinA") {Some(*my_output_arr[i].get("PinA").unwrap() as u8)} else {None};
+                stepper.lock().await.pin_b = if my_output_arr[i].contains_key("PinB") {Some(*my_output_arr[i].get("PinB").unwrap() as u8)} else {None};
+                stepper.lock().await.ena = if my_output_arr[i].contains_key("ena") {Some(*my_output_arr[i].get("ena").unwrap() as u8)} else {None};
+                stepper.lock().await.max.store(*my_output_arr[i].get("max").unwrap() as i32, Ordering::Relaxed);
+                stepper.lock().await.pos.store(*my_output_arr[i].get("pos").unwrap() as i32, Ordering::Relaxed);
+                stepper.lock().await.ratio = *my_output_arr[i].get("ratio").unwrap() as u8;
+                let mut stepper_lck = stepper.lock().await;
                 if stepper_lck.name == "ind" {
                     println!("Inductor set to lower speed");
                     stepper_lck.speed = Duration::from_micros(400);
@@ -696,12 +695,12 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, form: Multipart) ->
                 }
                 drop(stepper_lck);
                 for band in bands {
-                    let mut stepper_lck = stepper.lock().unwrap();
+                    let mut stepper_lck = stepper.lock().await;
                     println!("Stepper name: {}", stepper_lck.name);
                     let value = *output.mem.get(&stepper_lck.name).unwrap().get(&band.to_string()).unwrap_or(&0) as i32;
                     stepper_lck.mem.entry(band.to_string()).and_modify(|v| v.store(value, Ordering::Relaxed));
-                }
-            }   
+                } 
+            }  
             state_lck.enc = if output.enc.contains_key("PinA") && output.enc.contains_key("PinB") {
                 if let Some(enc) = &state_lck.enc {
                     let pin_a = enc.pin_a;
@@ -709,7 +708,7 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, form: Multipart) ->
                     let _ = process_pins(&mut state_lck.clone().gpio_pins, pin_a, false);
                     let _ = process_pins(&mut state_lck.clone().gpio_pins, pin_b, false);
                     *enc.stop.lock().unwrap() = true;
-                    thread::sleep(Duration::from_millis(50));
+                    interval(Duration::from_millis(50)).tick().await;
                     state_lck.enc = None;
                     println!("Deconfiguring Encoder to load new config");
                 }
@@ -728,14 +727,15 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, form: Multipart) ->
             state_lck.call_sign = output.call_sign;
             state_lck.status = format!("Sucessfully loaded: {} as a profile", file_name);
         }
+        
     } else if form_data.contains_key("file_name") {
             let mut file_name = form_data.get("file_name").unwrap().clone().to_string();
             file_name.push_str(".json");
-            state.lock().unwrap().file = file_name.clone();
-            state.lock().unwrap().status = format!("Saved data to: {}", file_name);
+            state.lock().await.file = file_name.clone();
+            state.lock().await.status = format!("Saved data to: {}", file_name);
             println!("{}", file_name);
             println!("New file saved");
-            sleep_save(state);
+            sleep_save(state).await;
         }
     return Redirect::to("/config");
 }
@@ -750,28 +750,28 @@ async fn pwr_btn_handler(State(state): State<Arc<Mutex<AppState>>>, form: Multip
         println!("Action: {}", action);
         match sw.as_str() {
             "Blwr" => {
-                let mut state_lck = state.lock().unwrap();
+                let mut state_lck = state.lock().await;
                 let pin = state_lck.pwr_btns.Blwr[0];
                 let _ = state_lck.pwr_btns.mcp.set_pin(pin, if action == "ON" {mcp230xx::Level::High} else {mcp230xx::Level::Low}).unwrap_or(());
                 state_lck.status = format!("{}", if action == "ON" {"Blower ON"} else {"Blower OFF"});
 
             }
             "Fil" => {
-                match step_start(&mut state.lock().unwrap(), form_data,"Filament".to_string(), |x| x.pwr_btns.Fil) {
+                match step_start(&mut state.lock().await.clone(), form_data,"Filament".to_string(), |x| x.pwr_btns.Fil) {
                     Ok(_) => {},
                     Err(e) => {println!("Error occured in Fillament Step start: {}", e);
                                     }
                 }
             }
             "HV" => {
-                match step_start(&mut state.lock().unwrap(), form_data,"HV".to_string(), |x| x.pwr_btns.HV) {
+                match step_start(&mut state.lock().await.clone(), form_data,"HV".to_string(), |x| x.pwr_btns.HV) {
                     Ok(_) => {},
                     Err(e) => println!("Error occured in HV Step Start: {}", e),
                 }
                 
             }
             "Oper" => {
-                let mut state_lck = state.lock().unwrap();
+                let mut state_lck = state.lock().await;
                 let pin = state_lck.pwr_btns.Oper[0];
                 let _ = state_lck.pwr_btns.mcp.set_pin(pin, if action == "ON" {mcp230xx::Level::High} else {mcp230xx::Level::Low});
                 state_lck.status = format!("{}", if action == "ON" {"Operate"} else {"Standby"});
@@ -816,15 +816,15 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
     loop {
         interval.tick().await;
         let date_time = chrono::offset::Local::now().format("%m-%d-%Y, %H:%M:%S").to_string();
-        let val = state.lock().unwrap().clone();
-        let call_sign = state.lock().unwrap().call_sign.clone();
-        let tune = val.tune.lock().unwrap().clone();
-        let ind = val.ind.lock().unwrap().clone();
-        let load = val.load.lock().unwrap().clone();
+        let val = state.lock().await.clone();
+        let call_sign = state.lock().await.call_sign.clone();
+        let tune = val.tune.lock().await.clone();
+        let ind = val.ind.lock().await.clone();
+        let load = val.load.lock().await.clone();
         if *tune.operate.lock().unwrap() == false && *ind.operate.lock().unwrap() == false && *load.operate.lock().unwrap() == false && val.sleep == true {
             count += 1;
             if count >= 10 {
-                sleep_save(state.clone());
+                sleep_save(state.clone()).await;
                 count = 0;
             }
         } else {
@@ -908,11 +908,11 @@ async fn aquire_i2c_data(state: Arc<Mutex<AppState>>) {
     let mut interval = interval(Duration::from_millis(100));
     let mut temp_data: HashMap<String, [String;2]> = HashMap::new();
     let (tx, rx) = mpsc::channel();
-    state.lock().unwrap().meter_sender = Some(tx);
+    state.lock().await.meter_sender = Some(tx);
     let mut run = true;
     loop {
         interval.tick().await;
-        let mut val = state.lock().unwrap().pwr_btns.clone();
+        let mut val = state.lock().await.pwr_btns.clone();
         let btn_arr = [val.Blwr[0], val.Fil[0], val.Fil[1], val.HV[0], val.HV[1]];
         btn_arr.iter().enumerate().for_each(|btn|{
             if let Ok(val) = val.mcp.read_pin(*btn.1) {
@@ -952,7 +952,7 @@ async fn aquire_i2c_data(state: Arc<Mutex<AppState>>) {
                 temp = t.0;
             } 
         } 
-        let mut state_lck = state.lock().unwrap();
+        let mut state_lck = state.lock().await;
         state_lck.pwr_btns_state = temp_data.clone();
         state_lck.temperature = temp;
         state_lck.gauges.screen_a = screen_ma;
@@ -962,13 +962,15 @@ async fn aquire_i2c_data(state: Arc<Mutex<AppState>>) {
 }
 
 //assistant function to create and initialize stepper motors
-fn handle_stepper<F> (state: &mut AppState, form_data: HashMap<String, String>, name: &str, add: bool, process: F)
+async fn handle_stepper<F> (state: &mut AppState, form_data: HashMap<String, String>, name: &str, add: bool, process: F)
 where
     F: Fn(&mut AppState) -> Arc<Mutex<Stepper>>,
     
  {
     let stepper = process(state);
-    let mut state_stepper = stepper.lock().unwrap();
+    println!("Before LOCK");
+    let mut state_stepper = stepper.lock().await;
+    println!("AFTER LOCK");
     if add {
         state.sw_pos = None;
         if form_data.get("PinA").unwrap() != "" && form_data.get("PinB").unwrap() != "" {
@@ -1019,8 +1021,8 @@ where
         
  }
 // Assistand function for recall route.
-fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: Bands) -> Result<(), Box< dyn std::error::Error>> {
-    let mut state_lck = state.lock().unwrap();
+async fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: Bands) -> Result<(), Box< dyn std::error::Error>> {
+    let mut state_lck = state.lock().await;
     if let Some(_) = state_lck.enc {
         let _ = state_lck.meter_sender.clone().unwrap().send(false);
         state_lck.pwr_btns.clone().bands.iter().for_each(|pin|{
@@ -1036,18 +1038,18 @@ fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: Bands) 
         state_lck.band = band_enum;
         state_lck.sw_pos = None;
         state_lck.sleep = true;
-        state_lck.enable_pin.lock().unwrap().set_low();
+        state_lck.enable_pin.lock().await.set_low();
         let my_locks = [
             state_lck.tune.clone(),
             state_lck.ind.clone(),
             state_lck.load.clone(),
         ];
-        if state_lck.enable_pin.lock().unwrap().is_set_low() {
+        if state_lck.enable_pin.lock().await.is_set_low() {
             drop(state_lck);
             for x in my_locks {
                 let value = band.clone();
-                thread::spawn(move || {
-                    let temp_lck = x.lock().unwrap().clone();
+                tokio::spawn(async move {
+                    let temp_lck = x.lock().await.clone();
                     if let Some(_) = temp_lck.pin_a { 
                         let _ = temp_lck.channel.unwrap().send((temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed) as u32, false));
                     } else {
@@ -1058,7 +1060,7 @@ fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: Bands) 
                 });
                 
             }
-            let mut state_lck = state.lock().unwrap();
+            let mut state_lck = state.lock().await;
             state_lck.status = format!("Recalled {} Band ! ! !", band);
         } else {
             state_lck.status = format!("Error with enable pin!");
@@ -1068,8 +1070,8 @@ fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: Bands) 
         Err(Box::new(Error::new(std::io::ErrorKind::Other, "No Encoder Present")))
     }
 }
-fn store_handler(state: Arc<Mutex<AppState>>, band: String) {
-    let mut state_lck = state.lock().unwrap();
+async fn store_handler(state: Arc<Mutex<AppState>>, band: String) {
+    let mut state_lck = state.lock().await;
     let my_locks = [
         state_lck.tune.clone(),
         state_lck.ind.clone(),
@@ -1077,7 +1079,7 @@ fn store_handler(state: Arc<Mutex<AppState>>, band: String) {
     ];
     for lock in my_locks {
         let value = band.clone();
-        let mut stepper = lock.lock().unwrap();
+        let mut stepper = lock.lock().await;
         let pos = stepper.pos.load(Ordering::Relaxed);
         stepper.mem.entry(value).and_modify(|v| v.store(pos,Ordering::Relaxed));
     }
@@ -1085,11 +1087,11 @@ fn store_handler(state: Arc<Mutex<AppState>>, band: String) {
 
 }
 //funtion that stores all data when either save is presssed or after recall has been completed.
-fn sleep_save(state: Arc<Mutex<AppState>>) {
-    let mut state_lck = state.lock().unwrap();
+async fn sleep_save(state: Arc<Mutex<AppState>>) {
+    let mut state_lck = state.lock().await;
     state_lck.sleep = false;
     println!("Sleep is: {}", state_lck.sleep);
-    state_lck.enable_pin.lock().unwrap().set_high();
+    state_lck.enable_pin.lock().await.set_high();
     println!("Sleep_Save Ran");
     state_lck.sw_pos = None;
     let file_path = path::Path::new(&state_lck.file);
@@ -1101,9 +1103,9 @@ fn sleep_save(state: Arc<Mutex<AppState>>) {
     let mut saved_state = StoredData::new();
     saved_state.enc.entry("PinA".to_string()).insert_entry(state_lck.clone().enc.unwrap().pin_a as u32);
     saved_state.enc.entry("PinB".to_string()).insert_entry(state_lck.clone().enc.unwrap().pin_b as u32);
-    saved_state.mem.entry("tune".to_string()).insert_entry(store_data_creator(&mut state_lck.clone(), &mut saved_state.tune, |x| x.tune.clone()));
-    saved_state.mem.entry("ind".to_string()).insert_entry(store_data_creator(&mut state_lck.clone(), &mut saved_state.ind, |x| x.ind.clone()));
-    saved_state.mem.entry("load".to_string()).insert_entry(store_data_creator(&mut state_lck.clone(), &mut saved_state.load, |x| x.load.clone()));
+    saved_state.mem.entry("tune".to_string()).insert_entry(store_data_creator(&mut state_lck.clone(), &mut saved_state.tune, |x| x.tune.clone()).await);
+    saved_state.mem.entry("ind".to_string()).insert_entry(store_data_creator(&mut state_lck.clone(), &mut saved_state.ind, |x| x.ind.clone()).await);
+    saved_state.mem.entry("load".to_string()).insert_entry(store_data_creator(&mut state_lck.clone(), &mut saved_state.load, |x| x.load.clone()).await);
     saved_state.band = state_lck.band.clone();
     saved_state.call_sign = state_lck.call_sign.clone();
     println!("Attempting to save data");
@@ -1117,28 +1119,28 @@ fn sleep_save(state: Arc<Mutex<AppState>>) {
     
 }
 //Assistant function to store route
-fn store_data_creator<F>(state_lck: &mut AppState, data: &mut HashMap<String,u32>, callback: F) -> HashMap<String, u32>
+async fn store_data_creator<F>(state_lck: &mut AppState, data: &mut HashMap<String,u32>, callback: F) -> HashMap<String, u32>
 where
     F: Fn (&mut AppState) -> Arc<Mutex<Stepper>>,
     {
     let stepper = callback(state_lck);
-    if let Some(pin_a) = stepper.lock().unwrap().pin_a {
+    if let Some(pin_a) = stepper.lock().await.pin_a {
         data.entry("PinA".to_string()).insert_entry(pin_a as u32);
         
     }
-    if let Some(pin_b) = stepper.lock().unwrap().pin_b {
+    if let Some(pin_b) = stepper.lock().await.pin_b {
         data.entry("PinB".to_string()).insert_entry(pin_b as u32);
 
     }
-    if let Some(ena) = stepper.lock().unwrap().ena {
+    if let Some(ena) = stepper.lock().await.ena {
         data.entry("ena".to_string()).insert_entry(ena as u32);
 
     }
-    data.entry("ratio".to_string()).insert_entry(stepper.lock().unwrap().ratio as u32);
-    data.entry("max".to_string()).insert_entry(stepper.lock().unwrap().max.load(Ordering::Relaxed) as u32);
-    data.entry("pos".to_string()).insert_entry(stepper.lock().unwrap().pos.load(Ordering::Relaxed).clone() as u32);
+    data.entry("ratio".to_string()).insert_entry(stepper.lock().await.ratio as u32);
+    data.entry("max".to_string()).insert_entry(stepper.lock().await.max.load(Ordering::Relaxed) as u32);
+    data.entry("pos".to_string()).insert_entry(stepper.lock().await.pos.load(Ordering::Relaxed).clone() as u32);
     let mut temp_mem_data = HashMap::new();
-    for (k, v) in stepper.lock().unwrap().mem.clone() {
+    for (k, v) in stepper.lock().await.mem.clone() {
         temp_mem_data.entry(k).insert_entry(v.load(Ordering::Relaxed)as u32);
         
     }
