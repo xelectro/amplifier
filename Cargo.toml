@@ -33,6 +33,7 @@ embedded-hal = "1"
 embedded-interfaces = "0.10.3"
 embedded-hal-bus = { version = "0.3", features = ["std"] }
 embedded-hal-compat = "0.13"
+anyhow = "1.0.102"
 
 
 [dev-dependencies]

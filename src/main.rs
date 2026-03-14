@@ -1,12 +1,10 @@
-use amplifier::encoder::Encoder;
-use amplifier::stepper::Stepper;
-use amplifier::mcp::Mcp;
+
 use askama::Template;
 use axum::response::sse::KeepAlive;
 use mcp230xx::Mcp23017;
 use mcp230xx;
 use std::env;
-use rppal::gpio::{Gpio, OutputPin};
+use rppal::gpio::Gpio;
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::{
     Router,
@@ -18,7 +16,6 @@ use axum::{
 use axum_extra::TypedHeader;
 use async_stream::stream;
 use futures_util::stream::Stream;
-use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use std::fs;
@@ -26,186 +23,23 @@ use std::io::Error;
 use std::path;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, mpsc};
-use std::thread;
-use std::{convert::Infallible, path::PathBuf, time::Duration};
-use tokio::sync::{broadcast::{self, Sender}, Mutex};
-use tokio::io;
+use std::time::Duration;
+use tokio::sync::{broadcast, Mutex};
 use tokio::time::interval;
-use tower_http::{services::ServeDir, trace::TraceLayer};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tower_http::{services::ServeDir};
 use chrono;
+use anyhow::Result;
+pub mod web;
+pub mod data;
+use web::{Encoder, Stepper};
+use data::{IndexTemplate, ConfigTemplate, SseData,
+    AppState, StoredData, Select,
+    PwrBtns, Bands, Gauges};
 const ENABLE_PIN: u8 = 16;
 
-#[derive(Template)]
-#[template(path = "amplifier2.html")]
-struct IndexTemplate<'a> {
-    name: &'a str,
-}
-#[derive(Template)]
-#[template(path = "config2.html")]
-struct ConfigTemplate {
-    enc: bool,
-    enc_val: Vec<String>,
-    tune: Vec<String>,
-    ind: Vec<String>,
-    load: Vec<String>,
-    pins: Vec<u8>,
-    files: Vec<String>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-struct SseData {
-    tune: u32,
-    ind: u32,
-    load: u32,
-    max: HashMap<String, u32>,
-    sw_pos: Option<Select>,
-    band: Bands,
-    ratio: HashMap<String, u8>,
-    plate_v: u32,
-    plate_a: u32,
-    screen_a: u32,
-    grid_a: u32,
-    pwr_btns: HashMap<String, [String; 2]>,
-    temperature: f64,
-    call_sign: String,
-    time: String,
-    status: String,
-}
-impl SseData {
-    fn new() -> SseData {
-        SseData {
-            tune: 0,
-            ind: 0,
-            load: 0,
-            max: HashMap::from([
-                ("tune".to_string(), 100000),
-                ("ind".to_string(), 100000),
-                ("load".to_string(), 100000),
-            ]),
-            sw_pos: None,
-            band: Bands::M11,
-            ratio: HashMap::from([
-                ("tune".to_string(), 1),
-                ("ind".to_string(), 1),
-                ("load".to_string(), 1),
-            ]),
-            plate_v: 0,
-            plate_a: 0,
-            screen_a: 0,
-            grid_a: 0,
-            pwr_btns: HashMap::from([
-                ("Blwr".to_string(), ["OFF".to_string(), "OFF".to_string()]),
-                ("Fil".to_string(), ["OFF".to_string(), "OFF".to_string()]),
-                ("HV".to_string(), ["OFF".to_string(), "OFF".to_string()]),
-                ("Oper".to_string(), ["OFF".to_string(), "OFF".to_string()]),
-            ]),
-            temperature: 0.0,
-            time: String::new(),
-            call_sign: String::from("-----"),
-            status: "Hello ALL BAND AMP".to_string(),
-        }
-    }
-}
-#[derive(Clone, Serialize, Deserialize, Debug)]
-struct StoredData {
-    tune: HashMap<String, u32>,
-    ind: HashMap<String, u32>,
-    load: HashMap<String, u32>,
-    enc: HashMap<String, u32>,
-    mem: HashMap<String, HashMap<String, u32>>,
-    band: Bands,
-    call_sign: String,
-}
-impl StoredData {
-    fn new() -> Self {
-        Self {
-            tune: HashMap::new(),
-            ind: HashMap::new(),
-            load: HashMap::new(),
-            enc: HashMap::new(),
-            mem: HashMap::new(),
-            band: Bands::M10,
-            call_sign: String::from("-----"),
-        }
-    }
-}
-#[derive(Clone)]
-struct AppState {
-    //event_sender: broadcast::Sender<SseData>,
-    tune: Arc<Mutex<Stepper>>,
-    ind: Arc<Mutex<Stepper>>,
-    load: Arc<Mutex<Stepper>>,
-    enc: Option<Encoder>,
-    sw_pos: Option<Select>,
-    band: Bands,
-    gauges: Gauges,
-    file: String,
-    sleep: bool,
-    enable_pin: Arc<Mutex<OutputPin>>,
-    pwr_btns: PwrBtns,
-    pwr_btns_state: HashMap<String, [String;2]>,
-    temperature: f64,
-    gpio_pins: Vec<u8>,
-    call_sign: String,
-    status: String,
-    sender: Sender<String>,
-    meter_sender: Option<mpsc::Sender<bool>>,
-}
-#[derive(Clone, Serialize, Deserialize)]
-enum Select {
-    Tune,
-    Ind,
-    Load,
-}
-#[derive(Clone, Serialize, Deserialize, Debug)]
-enum Bands {
-    M10,
-    M11,
-    M20,
-    M40,
-    M80,
-}
-#[derive(Clone, Serialize, Deserialize)]
-struct Gauges {
-    plate_v: u32,
-    plate_a: u32,
-    screen_a: u32,
-    grid_a: u32,
-}
-#[derive(Clone)]
-struct PwrBtns {
-    Blwr: [Mcp23017; 1],
-    Fil: [Mcp23017; 2],
-    HV: [Mcp23017; 2],
-    Oper: [Mcp23017; 1],
-    mcp: Mcp,
-    bands: [Mcp23017; 5],
-}
-impl PwrBtns {
-    fn new() -> Self {
-        let mcp = Mcp::new();
-        Self {
-            Blwr: [*mcp.pins.get("A0").unwrap()],
-            Fil: [*mcp.pins.get("A1").unwrap(), *mcp.pins.get("A2").unwrap()],
-            HV: [*mcp.pins.get("A3").unwrap(), *mcp.pins.get("A4").unwrap()],
-            Oper: [*mcp.pins.get("A5").unwrap()],
-            bands: [*mcp.pins.get("B0").unwrap(),
-                    *mcp.pins.get("B1").unwrap(),
-                    *mcp.pins.get("B2").unwrap(),
-                    *mcp.pins.get("B3").unwrap(),
-                    *mcp.pins.get("B4").unwrap(),],
-            mcp: {let mut output  = Mcp::new();
-                output.init();
-                output}
-
-        }
-    }
-}
-
 #[tokio::main]
-async fn main() -> Result<(), std::io::Error> {
-    let (tx, _rx) = broadcast::channel(4);
+async fn main() -> Result<()>{
+    let (tx, _rx) = broadcast::channel(1024);
     let app_state = Arc::new(Mutex::new(AppState {
         tune: Arc::new(Mutex::new(Stepper::new("tune"))),
         ind: Arc::new(Mutex::new(Stepper::new("ind"))),
@@ -214,7 +48,7 @@ async fn main() -> Result<(), std::io::Error> {
         sw_pos: None,
         band: Bands::M10,
         gauges: Gauges {
-            plate_v: 3000, //temporary for show
+            plate_v: 0,
             plate_a: 1,
             screen_a: 50,
             grid_a: 10,
@@ -246,23 +80,11 @@ async fn main() -> Result<(), std::io::Error> {
 
     tokio::spawn(aquire_data(app_state.clone()));
     tokio::spawn(aquire_i2c_data(app_state.clone()));
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                format!("{}=debug,tower_http=debug", env!("CARGO_CRATE_NAME")).into()
-            }),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    tracing::debug!("listening on {}", listener.local_addr().unwrap());
-    let assets_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
-    let static_files_service = ServeDir::new(assets_dir).append_index_html_on_directories(true);
-    // build our application with a route
     let app = Router::new()
-        .fallback_service(static_files_service)
         .route("/sse", get(sse_handler))
         .route("/config", get(config_get).post(config_post))
+        .route("/voltage", get(voltage_get))
         .route(
             "/",
             get(|| async {
@@ -278,20 +100,21 @@ async fn main() -> Result<(), std::io::Error> {
         .route("/stop", post(stop))
         .route("/load",  post(load))
         .route("/pwr_btn", post(pwr_btn_handler))
-        .layer(TraceLayer::new_for_http())
         .with_state(app_state);
     let _ = axum::serve(listener, app).await;
     Ok(())
 }
 
 // receiver form data from config page.
+async fn voltage_get(State(app_state): State<Arc<Mutex<AppState>>>) -> impl IntoResponse {
+    Html::from(read_html_file(&path::Path::new("templates/voltage.html")).unwrap())
+}
 async fn config_post(
     State(state): State<Arc<Mutex<AppState>>>,
     form: Multipart,
 ) -> impl IntoResponse {
     let form_data = process_form(form).await;
     let mut state = state.lock().await;
-    println!("FormData: {:?}", form_data);
     if let Some(_) = state.enc  {
         if form_data.contains_key("del_enc") {
             let pin_a = state.enc.clone().unwrap().pin_a;
@@ -415,14 +238,13 @@ async fn config_post(
     Redirect::to("/config")
 }
 
-fn process_pins(pin_list: &mut Vec<u8>, val: u8, remove: bool) -> Result<(), Box< dyn std::error::Error>> {
+fn process_pins(pin_list: &mut Vec<u8>, val: u8, remove: bool) -> Result<()> {
     if remove {
         if let Some(out) = pin_list.iter().position(|&x| x == val) {
             pin_list.remove(out);
-            return Ok(())
-        } else {
-            return Err(Box::new(Error::new(io::ErrorKind::Other, "Pin not Found")))
+            
         }
+        return Ok(())
     } else {
         pin_list.push(val);
         return Ok(())
@@ -494,7 +316,7 @@ async fn config_get(State(state): State<Arc<Mutex<AppState>>>) -> Html<String> {
 async fn sse_handler(
     TypedHeader(_): TypedHeader<headers::UserAgent>,
     State(app_state): State<Arc<Mutex<AppState>>>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Sse<impl Stream<Item = Result<Event>>> {
     let state_lck = app_state.lock().await;
     let mut rx = state_lck.sender.subscribe();
     Sse::new(stream! {
@@ -556,7 +378,7 @@ async fn selector(
     StatusCode::OK
 }
 
-async fn selector_handler<F>(state: &mut AppState,  callback: F) -> Result<(), Box<dyn std::error::Error>>
+async fn selector_handler<F>(state: &mut AppState,  callback: F) -> Result<()>
 where F:
         Fn(&mut AppState) -> Arc<Mutex<Stepper>> {
     let _ = state.meter_sender.clone().unwrap().send(false);
@@ -566,7 +388,7 @@ where F:
         return Ok(())
     } else {
         state.status = format!("No Encoder present! ! !");
-        Err(Box::new(Error::new(std::io::ErrorKind::Other, "No Encoder Forund")))
+        Err(Error::new(std::io::ErrorKind::Other, "No Encoder Forund").into())
         
     }
 
@@ -755,28 +577,34 @@ async fn pwr_btn_handler(State(state): State<Arc<Mutex<AppState>>>, form: Multip
                 let _ = state_lck.pwr_btns.mcp.set_pin(pin, if action == "ON" {mcp230xx::Level::High} else {mcp230xx::Level::Low}).unwrap_or(());
                 state_lck.status = format!("{}", if action == "ON" {"Blower ON"} else {"Blower OFF"});
 
-            }
+            },
             "Fil" => {
-                match step_start(&mut state.lock().await.clone(), form_data,"Filament".to_string(), |x| x.pwr_btns.Fil) {
-                    Ok(_) => {},
-                    Err(e) => {println!("Error occured in Fillament Step start: {}", e);
-                                    }
-                }
-            }
+                let status = match step_start(&mut state.lock().await.clone(), form_data,"Filament".to_string(), |x| x.pwr_btns.Fil) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        println!("Error occured in Fillament Step start: {}", e);
+                        format!("Error is Fil Step start")
+                    },
+                };
+                state.lock().await.status = status;
+            },
             "HV" => {
-                match step_start(&mut state.lock().await.clone(), form_data,"HV".to_string(), |x| x.pwr_btns.HV) {
-                    Ok(_) => {},
-                    Err(e) => println!("Error occured in HV Step Start: {}", e),
-                }
-                
-            }
+                let status = match step_start(&mut state.lock().await.clone(), form_data,"HV".to_string(), |x| x.pwr_btns.HV) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        println!("Error occured in HV Step Start: {}", e);
+                        format!("Error is HV Step start")
+                    },
+                };
+                state.lock().await.status = status;
+            },
             "Oper" => {
                 let mut state_lck = state.lock().await;
                 let pin = state_lck.pwr_btns.Oper[0];
                 let _ = state_lck.pwr_btns.mcp.set_pin(pin, if action == "ON" {mcp230xx::Level::High} else {mcp230xx::Level::Low});
                 state_lck.status = format!("{}", if action == "ON" {"Operate"} else {"Standby"});
 
-            }
+            },
 
             _ => println!("Invalid selection of swithes")
         }
@@ -784,7 +612,7 @@ async fn pwr_btn_handler(State(state): State<Arc<Mutex<AppState>>>, form: Multip
 }
 
 //step start helper function
-fn step_start<F>(state_lck: &mut AppState, form_data: HashMap<String, String>, name: String, callback: F)-> Result<(), Box< dyn std::error::Error>>
+fn step_start<F>(state_lck: &mut AppState, form_data: HashMap<String, String>, name: String, callback: F) -> Result<String>
 where
     F: Fn(&mut AppState) -> [Mcp23017;2],
     {
@@ -798,14 +626,18 @@ where
             let delay = form_data.get("delay").unwrap();
             let _ = state_lck.pwr_btns.mcp.set_pin(pin2, if delay == "ON"  && pin1_status == mcp230xx::Level::High {mcp230xx::Level::High} else {mcp230xx::Level::Low});
             state_lck.status = format!("{}", if action == "ON" && delay == "OFF" {
+                println!("Stepstart: {}", name);
                 format!("{} Step Start !!!",  name)
             } else if pin1_status == mcp230xx::Level::High && delay == "ON" {
+                println!("ON: {}", name);
                 format!("{}  ON ! ! !", name)
             } else {
+                println!("OFF: {}", name);
                 format!("{} Shutting Down...", name)
             });
+            println!("STATUS: {}", state_lck.status);
         } 
-        Ok(())
+        Ok(state_lck.status.clone())
     }
     
 // Aquires data from peripheral devices and feeds SSE via a broadcast channel.
@@ -838,7 +670,7 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
                         if  clone < tune.max.load(Ordering::Relaxed)-1 && clone > 0 {
                             if let Some(_) = tune.pin_a {
                                 if let Some(ch) = tune.channel.clone() {
-                                    let _ = ch.send((clone as u32, false));
+                                    let _ = ch.send((clone as u32, false, true));
                                 }
                             } else {
                                 tune.pos.store(clone, Ordering::Relaxed);
@@ -849,7 +681,7 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
                         if  clone < ind.max.load(Ordering::Relaxed)-1 && clone > 0 {
                             if let Some(_) = ind.pin_a {
                                 if let Some(ch) = ind.channel.clone() {
-                                    let _ = ch.send((clone as u32, false));
+                                    let _ = ch.send((clone as u32, false, true));
                                 }
                             } else {
                                 ind.pos.store(clone, Ordering::Relaxed);
@@ -860,7 +692,7 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
                         if  clone < load.max.load(Ordering::Relaxed)-1 && clone > 0 {
                             if let Some(_) = load.pin_a {
                                 if let Some(ch) = load.channel.clone() {
-                                    let _ = ch.send((clone as u32, false));
+                                    let _ = ch.send((clone as u32, false, true));
                                 }
                             } else {
                                 load.pos.store(clone, Ordering::Relaxed);
@@ -893,6 +725,7 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
             sse_output.ratio.entry(key).insert_entry(val);
         }
         sse_output.pwr_btns = val.pwr_btns_state;
+        sse_output.i2c_devices = val.pwr_btns.mcp.device_list.clone();
         sse_output.plate_v = val.gauges.plate_v;
         sse_output.plate_a = val.gauges.plate_a;
         sse_output.screen_a = val.gauges.screen_a;
@@ -943,20 +776,26 @@ async fn aquire_i2c_data(state: Arc<Mutex<AppState>>) {
             run = val;
         }
         let mut temp = 0.0;
-        let mut screen_ma = 0_u32;
+        let mut plate_a = 0_u32;
         let mut plate_v = 0_u32;
+        let mut screen_a = 0_u32;
+        let mut grid_a = 0_u32;
         if run {
-            if let Ok(t)=  val.mcp.read_val() {
-                plate_v = t.2 as u32;
-                screen_ma = t.1 as u32;
-                temp = t.0;
+            if let Ok(t) =  val.mcp.read_val() {
+                plate_v = t[2].abs() as u32;
+                plate_a = t[1].abs() as u32;
+                temp = t[0];
+                screen_a = t[3].abs() as u32;
+                grid_a = t[4].abs() as u32;
             } 
         } 
         let mut state_lck = state.lock().await;
         state_lck.pwr_btns_state = temp_data.clone();
         state_lck.temperature = temp;
-        state_lck.gauges.screen_a = screen_ma;
+        state_lck.gauges.plate_a = plate_a;
         state_lck.gauges.plate_v = plate_v as u32 * 100;
+        state_lck.gauges.screen_a = screen_a;
+        state_lck.gauges.grid_a = grid_a;
     }
         
 }
@@ -1000,7 +839,7 @@ where
             let pin_b = state_stepper.pin_b.unwrap();
             let _ = process_pins(&mut state.gpio_pins, pin_a, false);
             let _ = process_pins(&mut state.gpio_pins, pin_b, false);
-            let _ = state_stepper.channel.clone().unwrap().send((state_stepper.pos.load(Ordering::Relaxed) as u32, true));
+            let _ = state_stepper.channel.clone().unwrap().send((state_stepper.pos.load(Ordering::Relaxed) as u32, true, false));
             state_stepper.pin_a = None;
             state_stepper.pin_b = None;
             state_stepper.ratio = 1;
@@ -1021,7 +860,7 @@ where
         
  }
 // Assistand function for recall route.
-async fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: Bands) -> Result<(), Box< dyn std::error::Error>> {
+async fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: Bands) -> Result<()> {
     let mut state_lck = state.lock().await;
     if let Some(_) = state_lck.enc {
         let _ = state_lck.meter_sender.clone().unwrap().send(false);
@@ -1051,7 +890,7 @@ async fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: B
                 tokio::spawn(async move {
                     let temp_lck = x.lock().await.clone();
                     if let Some(_) = temp_lck.pin_a { 
-                        let _ = temp_lck.channel.unwrap().send((temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed) as u32, false));
+                        let _ = temp_lck.channel.unwrap().send((temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed) as u32, false, false));
                     } else {
                         temp_lck.pos.store(temp_lck.mem.get(&value).unwrap().load(Ordering::Relaxed), Ordering::Relaxed);
                     }
@@ -1067,7 +906,7 @@ async fn recall_handler (state: Arc<Mutex<AppState>>, band: String, band_enum: B
         }
     return Ok(())
     } else {
-        Err(Box::new(Error::new(std::io::ErrorKind::Other, "No Encoder Present")))
+        Err(Error::new(std::io::ErrorKind::Other, "No Encoder Present").into())
     }
 }
 async fn store_handler(state: Arc<Mutex<AppState>>, band: String) {
@@ -1161,4 +1000,8 @@ async fn process_form(mut form: Multipart) -> HashMap<String, String> {
     }
     println!("Pwr Button form data {:?}", form_data);
     form_data
+}
+fn read_html_file(path: &path::Path) -> Result<String> {
+    let output = fs::read_to_string(path)?;
+    Ok(output)
 }

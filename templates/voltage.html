@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <style>
+table, th, td {
+  border: 1px solid green;
+  align-items: center;
+  text-align: center;
+}
+        </style>
+    </head>
+    <body>
+        <table id="main_table">
+        </table>
+    </body>
+    <script>
+        let table = document.getElementById("main_table")
+        let tr = document.createElement("tr");
+        let headerName = document.createElement("th")
+        let headerValue = document.createElement("th")
+        headerName.innerText = "Name";
+        headerValue.innerText = "Value"
+        tr.appendChild(headerName);
+        tr.appendChild(headerValue);
+        table.appendChild(tr);
+        let new_data;
+        window.addEventListener("message", event => {
+            if (event.origin == window.location.origin) {
+                console.log(event.data.time);
+                new_data = event.data;
+                while (table.firstChild) {
+                    table.removeChild(table.lastChild)
+                }
+                let table_arr = ["plate voltage", "plate current", "screen voltage", "screen curent", "grid current", "temp"];
+                let table_arr_data = [new_data.plate_v, new_data.plate_a, null,
+                    new_data.screen_a, new_data.grid_a, Math.round(new_data.temperature)];
+                table_arr.forEach((el, i) =>{
+                    let row = document.createElement("tr");
+                    let data_1 = document.createElement("td")
+                    let data_2 = document.createElement("td")
+                    data_1.innerText = el
+                    data_2.innerText = table_arr_data[i];
+                    row.appendChild(data_1);
+                    row.appendChild(data_2);
+                    table.appendChild(row)
+            
+        })
+            }
+        })
+        
+        
+    </script>
+</html>

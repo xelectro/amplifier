@@ -7,9 +7,35 @@ let temperature_data = document.createElement("h2");
 temperature_data.setAttribute("style", "color: green")
 temperature.appendChild(temperature_data);
 let clock = document.createElement("td");
+let adv_voltage = document.createElement("button");
+let advVoltageAttributes = {"class" : "button2", "id": "adv_voltage_btn", "name": "adv_voltage", "value": "adv_voltage", "type": "submit"};
+for ([key, val] of Object.entries(advVoltageAttributes)) {
+    adv_voltage.setAttribute(key, val)
+}
+adv_voltage.classList.add("active")
+adv_voltage.addEventListener("mouseover", (event) => {
+    event.target.classList.add("mouseover");
+    });
+adv_voltage.addEventListener("mouseout", (event) => {
+    event.target.classList.remove("mouseover");
+    });
+adv_voltage.innerText = "Adv Voltage";
+let voltageWindow;
+adv_voltage.addEventListener("click", event =>{
+    event.preventDefault();
+    console.log(event.target.name);
+    console.log(event.target);
+    voltageWindow = window.open(
+        "/voltage",
+        "Advanced_Voltage",
+        "width=300, height=300",
+    );
+    
+
+})
 let clock_data = document.createElement("h3");
 clock_data.setAttribute("style", "color: magenta");
-clock.appendChild(clock_data);
+clock.appendChild(adv_voltage);
 let call_sign = document.createElement("td");
 let call_sign_data = document.createElement("h1");
 call_sign_data.setAttribute("style", "color: cyan");
@@ -22,7 +48,7 @@ if (headerAddr) { headerAddr.textContent = window.location.host; }
 const headerClock = document.getElementById("header_clock");
 if (headerClock) {
     headerClock.replaceChildren(clock_data);
-    clock.style.display = "none";  // keep table layout stable
+    //clock.style.display = "none";  // keep table layout stable
 }
 
 const headerCall = document.getElementById("header_callsign");
@@ -230,6 +256,9 @@ learn_update.onmessage = (e) => {
             );
         }
         temperature_data.innerText = "Temp:" +  Math.round(meter_values.temperature) + " C";
+        if (voltageWindow != null) {
+            //voltageWindow.postMessage(meter_values, window.location.origin);
+        }
         clock_data.innerText = meter_values.time;
         call_sign_data.innerText = meter_values.call_sign;
         bar_meter_tune.innerHTML =
