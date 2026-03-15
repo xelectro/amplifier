@@ -39,7 +39,7 @@ const ENABLE_PIN: u8 = 16;
 
 #[tokio::main]
 async fn main() -> Result<()>{
-    let (tx, _rx) = broadcast::channel(1024);
+    let (tx, _rx) = broadcast::channel(8);
     let app_state = Arc::new(Mutex::new(AppState {
         tune: Arc::new(Mutex::new(Stepper::new("tune"))),
         ind: Arc::new(Mutex::new(Stepper::new("ind"))),
