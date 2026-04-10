@@ -9,7 +9,7 @@ use std::time::Duration;
 use std::{collections::HashMap, error::Error};
 //use linux_embedded_hal::I2cdev;
 use mcp230xx::{self, Direction, Mcp230xx, Mcp23017};
-use embedded_devices::{devices::texas_instruments::ina228::{INA228Sync, address::{Address, Pin}}, sensor::VoltageMeasurement};
+use embedded_devices::devices::texas_instruments::ina228::{INA228Sync, address::{Address, Pin}};
 use embedded_devices::sensor::OneshotSensorSync;
 use embedded_hal::delay::DelayNs;
 use embedded_interfaces::i2c::I2cDeviceSync;
@@ -172,7 +172,7 @@ impl Stepper {
         let gpio = Gpio::new().unwrap();
         let mut pulse_pin = gpio.get(self.pin_a.unwrap()).unwrap().into_output();
         let mut dir_pin = gpio.get(self.pin_b.unwrap()).unwrap().into_output();
-        let mut count = 0;
+        let mut steps_taken = 0;
         let pos = self.pos.clone();
         let mut speed = self.speed.clone();
         let operate = self.operate.clone();
@@ -181,140 +181,115 @@ impl Stepper {
         thread::spawn(move ||  {
             loop{
                 if let Ok((val, stop, manual))  = rx.recv() {
+                    let mut target = val;
+                    let mut manual_mode = manual;
+                    while let Ok((next_val, next_stop, next_manual)) = rx.try_recv() {
+                        if next_stop {
+                            println!("Stopping stepper loop to delete stepper.");
+                            return;
+                        }
+                        target = next_val;
+                        manual_mode = next_manual;
+                    }
                     if stop {
                         println!("Stopping stepper loop to delete stepper.");
                         break;
                     }
                     pulse_pin.set_low();
-                    if val > pos.load(Ordering::Relaxed) as u32 {
+                    if target > pos.load(Ordering::Relaxed) as u32 {
                         *operate.lock().unwrap() = true;
                         dir_pin.set_high();
-                        while val > pos.load(Ordering::Relaxed) as u32 {
-                            if name == "ind" && !manual {
-                                speed = get_speed(val - pos.load(Ordering::Relaxed) as u32, count); 
-                            } else if name == "ind" && manual {
+                        while target > pos.load(Ordering::Relaxed) as u32 {
+                            if name == "ind" && !manual_mode {
+                                speed = get_speed(target - pos.load(Ordering::Relaxed) as u32, steps_taken); 
+                            } else if name == "ind" && manual_mode {
                                 speed = Duration::from_micros(200);
                             }                           
-                            count += 1;
+                            steps_taken += 1;
                             pulse_pin.set_high();
                             thread::sleep(speed);
                             pulse_pin.set_low();
                             thread::sleep(speed);
-                            if count % 2 == 0 { 
+                            if steps_taken % 2 == 0 { 
                                 pos.fetch_add(1, Ordering::Relaxed);
+                            }
+                            while let Ok((next_val, next_stop, next_manual)) = rx.try_recv() {
+                                if next_stop {
+                                    println!("Stopping stepper loop to delete stepper.");
+                                    pulse_pin.set_low();
+                                    *operate.lock().unwrap() = false;
+                                    return;
+                                }
+                                target = next_val;
+                                manual_mode = next_manual;
+                                if target < pos.load(Ordering::Relaxed) as u32 {
+                                    dir_pin.set_low();
+                                }
                             }
                         } 
                         *operate.lock().unwrap() = false;
-                    } else if val < pos.load(Ordering::Relaxed) as u32{
+                    } else if target < pos.load(Ordering::Relaxed) as u32{
                         *operate.lock().unwrap() = true;
                         dir_pin.set_low();
-                        while val < pos.load(Ordering::Relaxed) as u32 {
-                            if name == "ind" && !manual {
-                                speed = get_speed(pos.load(Ordering::Relaxed) as u32 - val, count);  
-                            } else if name == "ind" && manual {
+                        while target < pos.load(Ordering::Relaxed) as u32 {
+                            if name == "ind" && !manual_mode {
+                                speed = get_speed(pos.load(Ordering::Relaxed) as u32 - target, steps_taken);  
+                            } else if name == "ind" && manual_mode {
                                 speed = Duration::from_micros(200);
                             }                                
-                            count += 1;
+                            steps_taken += 1;
                             pulse_pin.set_high();
                             thread::sleep(speed);
                             pulse_pin.set_low();
                             thread::sleep(speed);
-                            if count % 2 == 0 {
+                            if steps_taken % 2 == 0 {
                                 pos.fetch_add(-1, Ordering::Relaxed); 
+                            }
+                            while let Ok((next_val, next_stop, next_manual)) = rx.try_recv() {
+                                if next_stop {
+                                    println!("Stopping stepper loop to delete stepper.");
+                                    pulse_pin.set_low();
+                                    *operate.lock().unwrap() = false;
+                                    return;
+                                }
+                                target = next_val;
+                                manual_mode = next_manual;
+                                if target > pos.load(Ordering::Relaxed) as u32 {
+                                    dir_pin.set_high();
+                                }
                             }
                         }
                         *operate.lock().unwrap() = false;
                     }
-                count = 0;
+                    steps_taken = 0;
                 }
             }
         });
         
     }
-    fn calc_speed(val: u32, count: i32) -> Duration {
-        match count {
-            0..20 => Duration::from_micros(4000),
-            20..50 => Duration::from_micros(3000),
-            50..100 => Duration::from_micros(2000),
-            100..150 => Duration::from_micros(1000),
-            150..200 => Duration::from_micros(800),
-            200..250 => Duration::from_micros(600),
-            250..350 => {
-                if count > 1000 {
-                    Duration::from_micros(500)
-                } else {
-                    Duration::from_micros(600)
-                }
-            },
-            350..500 => {
-                if count > 1000 {
-                    Duration::from_micros(400)
-                } else {
-                    Duration::from_micros(600)
-                }
-            },
-            500..750 => {
-                if count > 1000 {
-                    Duration::from_micros(350)
-                } else if  count < 1000 && count > 500{
-                    Duration::from_micros(400)
-                } else if count < 500 {
-                    Duration::from_micros(600)
-                } else {
-                    Duration::from_micros(800)
-                }
-            },
-            750..900 => {
-                if count > 1000 {
-                    Duration::from_micros(300)
-                } else if  count < 1000 && count > 500{
-                    Duration::from_micros(400)
-                } else if count < 500 {
-                    Duration::from_micros(600)
-                } else {
-                    Duration::from_micros(800)
-                }
-            }
-            900..1000 => {
-                if count > 1000 {
-                    Duration::from_micros(250)
-                } else if  count < 1000 && count > 500{
-                    Duration::from_micros(400)
-                } else if count < 500 {
-                    Duration::from_micros(600)
-                } else {
-                    Duration::from_micros(800)
-                }
-            },
-            1000..1250 => {
-                if count > 1000 {
-                    Duration::from_micros(200)
-                } else if  count < 1000 && count > 500{
-                    Duration::from_micros(400)
-                } else if count < 500 {
-                    Duration::from_micros(600)
-                } else {
-                    Duration::from_micros(800)
-                }
-            },
-            _ => {
-                match val {
-                    1000..u32::MAX => Duration::from_micros(200),
-                    900..1000 => Duration::from_micros(250),
-                    800..900 => Duration::from_micros(300),
-                    600..800 => Duration::from_micros(350),
-                    400..600 => Duration::from_micros(400),
-                    200..400 => Duration::from_micros(600),
-                    100..200 => Duration::from_micros(800),
-                    75..100 => Duration::from_micros(1000),
-                    50..75 => Duration::from_micros(2000),
-                    20..50 => Duration::from_micros(3000),
-                    0..20 => Duration::from_micros(4000),
-                    _ => Duration::from_micros(400),
-                }
+    fn calc_speed(remaining_steps: u32, steps_taken: i32) -> Duration {
+        fn delay_for_window(steps: u32) -> Duration {
+            match steps {
+                0..20 => Duration::from_micros(5000),
+                20..50 => Duration::from_micros(3500),
+                50..100 => Duration::from_micros(2500),
+                100..180 => Duration::from_micros(1600),
+                180..300 => Duration::from_micros(1100),
+                300..450 => Duration::from_micros(800),
+                450..650 => Duration::from_micros(600),
+                650..900 => Duration::from_micros(400),
+                900..1200 => Duration::from_micros(300),
+                1200_u32..=u32::MAX => Duration::from_micros(200),
             }
         }
-        
+
+        let accel_window = if steps_taken <= 0 { 0 } else { steps_taken as u32 };
+        let accel_delay = delay_for_window(accel_window);
+        let decel_delay = delay_for_window(remaining_steps);
+
+        // The slower side wins so the inductor never accelerates beyond
+        // what the remaining stopping distance can safely handle.
+        accel_delay.max(decel_delay)
     }
 }
 

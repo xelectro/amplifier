@@ -6,10 +6,12 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
     </head>
     <body>
+    <main class="amp-page">
     <div id="amp_header" class="amp-header">
       <div class="amp-header-left">
         <div class="amp-pill"><span class="amp-ico">🌐</span><span id="header_addr">0.0.0.0:0000</span></div>
-        <div class="amp-pill"><span class="amp-dot"></span><span id="header_conn">ONLINE</span></div>
+        <div class="amp-pill"><span id="header_conn_dot" class="amp-dot amp-dot-offline"></span><span id="header_conn">OFFLINE</span></div>
+        <button id="theme_toggle" class="amp-theme-toggle" type="button" aria-pressed="false">Dark</button>
       </div>
       <div class="amp-header-center">
         <div class="amp-pill"><span class="amp-ico">🕒</span><span id="header_clock"></span></div>
@@ -19,7 +21,8 @@
       </div>
     </div>
 
-        <table>
+        <div class="table-wrap">
+        <table class="amp-grid">
             <tr>
                 <th>Tune</th>
                 <th>Inductor</th>
@@ -37,10 +40,9 @@
                         </div>
                         <!-- The circular meter itself -->
                         <div class="meter" id="meter_tune"></div>
+                        <!-- Display for the current meter reading -->
+                        <div class="meter-reading" id="tune">0</div>
                     </div>
-
-                    <!-- Display for the current meter reading -->
-                    <div class="meter-reading" id="tune">0</div>
                 </td>
                 <td>
                     <!-- Container for the meter and its components INDUCTOR-->
@@ -51,10 +53,9 @@
                         </div>
                         <!-- The circular meter itself -->
                         <div class="meter" id="meter_ind"></div>
+                        <!-- Display for the current meter reading -->
+                        <div class="meter-reading" id="ind">0</div>
                     </div>
-
-                    <!-- Display for the current meter reading -->
-                    <div class="meter-reading" id="ind">0</div>
                 </td>
                 <td>
                     <!-- Container for the meter and its components LOAD-->
@@ -65,10 +66,9 @@
                         </div>
                         <!-- The circular meter itself -->
                         <div class="meter" id="meter_load"></div>
+                        <!-- Display for the current meter reading -->
+                        <div class="meter-reading" id="load">0</div>
                     </div>
-
-                    <!-- Display for the current meter reading -->
-                    <div class="meter-reading" id="load">0</div>
                 </td>
                 <td>
                     <div
@@ -145,7 +145,9 @@
             </tr>
             <tr id="band_selectors" style="height: 5rem"></tr>
         </table>
-        <table id="power_btns" style="width: 64.7rem">
+        </div>
+        <div class="table-wrap">
+        <table id="power_btns" class="power-grid">
             <tr>
                 <th>Blower</th>
                 <th>Filament</th>
@@ -153,31 +155,34 @@
                 <th>Stb/Oper</th>
             </tr>
         </table>
+        </div>
 
         <p id="status_bar"></p>
 
-        <br />
-        <button
-            id="store_btn"
-            class="button"
-            name="store"
-            type="submit"
-            value="Store"
-        >
-            Store
-        </button>
-        <button id="save_btn" class="button" name="save" value="Save">
-            Save/Stop
-        </button>
-        <button
-            class="button"
-            id="config_btn"
-            name="config"
-            type="submit"
-            value="Config Page"
-        >
-            Config
-        </button>
+        <div class="action-row">
+            <button
+                id="store_btn"
+                class="button"
+                name="store"
+                type="submit"
+                value="Store"
+            >
+                Store
+            </button>
+            <button id="save_btn" class="button" name="save" value="Save">
+                Save/Stop
+            </button>
+            <button
+                class="button"
+                id="config_btn"
+                name="config"
+                type="submit"
+                value="Config Page"
+            >
+                Config
+            </button>
+        </div>
+    </main>
     </body>
     <script src="/static/amplifier3.js" type="text/javascript"></script>
 </html>

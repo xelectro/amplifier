@@ -8,14 +8,15 @@ use rppal::gpio::Gpio;
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::{
     Router,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State, ws::{Message, WebSocket, WebSocketUpgrade}},
     http::StatusCode,
     response::sse::{Event, Sse},
     routing::{get, post},
 };
 use axum_extra::TypedHeader;
 use async_stream::stream;
-use futures_util::stream::Stream;
+use futures_util::{stream::Stream, StreamExt};
+use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use std::fs;
@@ -23,7 +24,7 @@ use std::io::Error;
 use std::path;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, mpsc};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::interval;
 use tower_http::{services::ServeDir};
@@ -34,7 +35,7 @@ pub mod data;
 use web::{Encoder, Stepper};
 use data::{IndexTemplate, ConfigTemplate, SseData,
     AppState, StoredData, Select,
-    PwrBtns, Bands, Gauges};
+    PwrBtns, Bands, Gauges, default_pwr_btn_state};
 const ENABLE_PIN: u8 = 16;
 
 #[tokio::main]
@@ -62,12 +63,7 @@ async fn main() -> Result<()>{
             Arc::new(Mutex::new(pin))
         },
         pwr_btns : PwrBtns::new(),
-        pwr_btns_state: HashMap::from([
-                ("Blwr".to_string(), ["OFF".to_string(), "OFF".to_string()]),
-                ("Fil".to_string(), ["OFF".to_string(), "OFF".to_string()]),
-                ("HV".to_string(), ["OFF".to_string(), "OFF".to_string()]),
-                ("Oper".to_string(), ["OFF".to_string(), "OFF".to_string()]),
-            ]),
+        pwr_btns_state: default_pwr_btn_state(),
         temperature: 0.0,
         gpio_pins: vec![17, 27, 22, 5, 6, 13, 19,
                         26,14, 15, 18, 23, 24, 25,
@@ -85,6 +81,8 @@ async fn main() -> Result<()>{
         .route("/sse", get(sse_handler))
         .route("/config", get(config_get).post(config_post))
         .route("/voltage", get(voltage_get))
+        .route("/round_dial", get(round_dial_get))
+        .route("/round_dial_ws", get(round_dial_ws_handler))
         .route(
             "/",
             get(|| async {
@@ -106,8 +104,206 @@ async fn main() -> Result<()>{
 }
 
 // receiver form data from config page.
-async fn voltage_get(State(app_state): State<Arc<Mutex<AppState>>>) -> impl IntoResponse {
+async fn voltage_get(State(_app_state): State<Arc<Mutex<AppState>>>) -> impl IntoResponse {
     Html::from(read_html_file(&path::Path::new("templates/voltage.html")).unwrap())
+}
+
+async fn round_dial_get() -> impl IntoResponse {
+    Html::from(read_html_file(&path::Path::new("templates/round_dial.html")).unwrap())
+}
+
+#[derive(Debug, Deserialize)]
+struct RoundDialQuery {
+    tuner: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DialClientMessage {
+    #[serde(rename = "type")]
+    message_type: String,
+    display_position: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+struct DialServerMessage {
+    #[serde(rename = "type")]
+    message_type: &'static str,
+    tuner: String,
+    label: String,
+    ratio: u8,
+    display_position: u32,
+    raw_position: u32,
+    max_display: u32,
+    max_raw: u32,
+    status: String,
+}
+
+async fn round_dial_ws_handler(
+    ws: WebSocketUpgrade,
+    Query(query): Query<RoundDialQuery>,
+    State(app_state): State<Arc<Mutex<AppState>>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| round_dial_socket(socket, app_state, query.tuner))
+}
+
+async fn round_dial_socket(mut socket: WebSocket, app_state: Arc<Mutex<AppState>>, tuner: String) {
+    let Some(select) = parse_select(&tuner) else {
+        let _ = socket.send(Message::Text(r#"{"type":"error","status":"Invalid tuner"}"#.into())).await;
+        return;
+    };
+
+    let _ = set_round_dial_selection(&app_state, &select).await;
+
+    if let Ok(message) = dial_state_message(&app_state, &select, None).await {
+        let _ = socket.send(Message::Text(serde_json::to_string(&message).unwrap().into())).await;
+    }
+
+    while let Some(Ok(message)) = socket.next().await {
+        match message {
+            Message::Text(text) => {
+                if let Ok(client_message) = serde_json::from_str::<DialClientMessage>(&text) {
+                    if client_message.message_type == "set" {
+                        if let Some(display_position) = client_message.display_position {
+                            match apply_round_dial_target(&app_state, &select, display_position).await {
+                                Ok(server_message) => {
+                                    let _ = socket.send(Message::Text(
+                                        serde_json::to_string(&server_message).unwrap().into(),
+                                    )).await;
+                                }
+                                Err(err) => {
+                                    let payload = serde_json::json!({
+                                        "type": "error",
+                                        "status": err.to_string(),
+                                    });
+                                    let _ = socket.send(Message::Text(payload.to_string().into())).await;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Message::Close(_) => break,
+            _ => {}
+        }
+    }
+}
+
+fn parse_select(value: &str) -> Option<Select> {
+    match value.to_ascii_lowercase().as_str() {
+        "tune" => Some(Select::Tune),
+        "ind" => Some(Select::Ind),
+        "load" => Some(Select::Load),
+        _ => None,
+    }
+}
+
+fn select_slug(select: &Select) -> &'static str {
+    match select {
+        Select::Tune => "tune",
+        Select::Ind => "ind",
+        Select::Load => "load",
+    }
+}
+
+fn select_label(select: &Select) -> &'static str {
+    match select {
+        Select::Tune => "Tune",
+        Select::Ind => "Inductor",
+        Select::Load => "Load",
+    }
+}
+
+async fn stepper_for_select(state: &Arc<Mutex<AppState>>, select: &Select) -> Arc<Mutex<Stepper>> {
+    let state_lck = state.lock().await;
+    match select {
+        Select::Tune => state_lck.tune.clone(),
+        Select::Ind => state_lck.ind.clone(),
+        Select::Load => state_lck.load.clone(),
+    }
+}
+
+async fn set_round_dial_selection(state: &Arc<Mutex<AppState>>, select: &Select) -> Result<()> {
+    let stepper = stepper_for_select(state, select).await;
+    let current_position = stepper.lock().await.pos.load(Ordering::Relaxed);
+    let mut state_lck = state.lock().await;
+    state_lck.enable_pin.lock().await.set_low();
+    state_lck.sw_pos = Some(select.clone());
+    state_lck.status = format!("{} dial active", select_label(select));
+    if let Some(enc) = state_lck.enc.clone() {
+        enc.count.store(current_position, Ordering::Relaxed);
+    }
+    if let Some(meter_sender) = state_lck.meter_sender.clone() {
+        let _ = meter_sender.send(false);
+    }
+    Ok(())
+}
+
+async fn dial_state_message(
+    state: &Arc<Mutex<AppState>>,
+    select: &Select,
+    raw_override: Option<u32>,
+) -> Result<DialServerMessage> {
+    let stepper = stepper_for_select(state, select).await;
+    let status = state.lock().await.status.clone();
+    let stepper_lck = stepper.lock().await;
+    let ratio = stepper_lck.ratio.max(1);
+    let raw_position = raw_override.unwrap_or(stepper_lck.pos.load(Ordering::Relaxed) as u32);
+    let max_raw = stepper_lck.max.load(Ordering::Relaxed).max(0) as u32;
+    Ok(DialServerMessage {
+        message_type: "state",
+        tuner: select_slug(select).to_string(),
+        label: select_label(select).to_string(),
+        ratio,
+        display_position: raw_position / ratio as u32,
+        raw_position,
+        max_display: max_raw / ratio as u32,
+        max_raw,
+        status,
+    })
+}
+
+async fn apply_round_dial_target(
+    state: &Arc<Mutex<AppState>>,
+    select: &Select,
+    display_target: u32,
+) -> Result<DialServerMessage> {
+    let stepper = stepper_for_select(state, select).await;
+    let encoder = state.lock().await.enc.clone();
+
+    let (ratio, max_raw, has_channel, channel) = {
+        let stepper_lck = stepper.lock().await;
+        (
+            stepper_lck.ratio.max(1),
+            stepper_lck.max.load(Ordering::Relaxed).max(0) as u32,
+            stepper_lck.pin_a.is_some(),
+            stepper_lck.channel.clone(),
+        )
+    };
+
+    let max_display = max_raw / ratio as u32;
+    let clamped_display = display_target.min(max_display);
+    let raw_target = clamped_display.saturating_mul(ratio as u32).min(max_raw);
+
+    if has_channel {
+        if let Some(ch) = channel {
+            let _ = ch.send((raw_target, false, true));
+        }
+    } else {
+        stepper.lock().await.pos.store(raw_target as i32, Ordering::Relaxed);
+    }
+
+    if let Some(enc) = encoder {
+        enc.count.store(raw_target as i32, Ordering::Relaxed);
+    }
+
+    {
+        let mut state_lck = state.lock().await;
+        if state_lck.sw_pos != Some(select.clone()) {
+            state_lck.sw_pos = Some(select.clone());
+        }
+    }
+
+    dial_state_message(state, select, Some(raw_target)).await
 }
 async fn config_post(
     State(state): State<Arc<Mutex<AppState>>>,
@@ -620,15 +816,25 @@ where
         let my_btns = callback(state_lck);
         let pin1 = my_btns[0];
         let pin2 = my_btns[1];
-        let pin1_status = state_lck.pwr_btns.mcp.read_pin(pin1)?;
-        let _ = state_lck.pwr_btns.mcp.set_pin(pin1, if action == "ON" {mcp230xx::Level::High} else {mcp230xx::Level::Low});  
+        let requested_on = action == "ON";
+        let primary_level = if requested_on {
+            mcp230xx::Level::High
+        } else {
+            mcp230xx::Level::Low
+        };
+        let _ = state_lck.pwr_btns.mcp.set_pin(pin1, primary_level);
         if form_data.contains_key("delay") {
             let delay = form_data.get("delay").unwrap();
-            let _ = state_lck.pwr_btns.mcp.set_pin(pin2, if delay == "ON"  && pin1_status == mcp230xx::Level::High {mcp230xx::Level::High} else {mcp230xx::Level::Low});
-            state_lck.status = format!("{}", if action == "ON" && delay == "OFF" {
+            let secondary_level = if requested_on && delay == "ON" {
+                mcp230xx::Level::High
+            } else {
+                mcp230xx::Level::Low
+            };
+            let _ = state_lck.pwr_btns.mcp.set_pin(pin2, secondary_level);
+            state_lck.status = format!("{}", if requested_on && delay == "OFF" {
                 println!("Stepstart: {}", name);
                 format!("{} Step Start !!!",  name)
-            } else if pin1_status == mcp230xx::Level::High && delay == "ON" {
+            } else if requested_on && delay == "ON" {
                 println!("ON: {}", name);
                 format!("{}  ON ! ! !", name)
             } else {
@@ -645,11 +851,12 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
     let mut interval = interval(Duration::from_millis(10));
     println!("Aquire data");
     let mut count = 0;
+    let mut last_sse_output: Option<SseData> = None;
     loop {
         interval.tick().await;
         let date_time = chrono::offset::Local::now().format("%m-%d-%Y, %H:%M:%S").to_string();
         let val = state.lock().await.clone();
-        let call_sign = state.lock().await.call_sign.clone();
+        let call_sign = val.call_sign.clone();
         let tune = val.tune.lock().await.clone();
         let ind = val.ind.lock().await.clone();
         let load = val.load.lock().await.clone();
@@ -732,65 +939,89 @@ async fn aquire_data(state: Arc<Mutex<AppState>>) {
         sse_output.grid_a = val.gauges.grid_a;
         sse_output.temperature = val.temperature;
         sse_output.status = val.status.clone();
-        let _ = val.sender.send(serde_json::to_string(&sse_output).unwrap());    
+        if last_sse_output.as_ref() != Some(&sse_output) {
+            last_sse_output = Some(sse_output.clone());
+            let _ = val.sender.send(serde_json::to_string(&sse_output).unwrap());
+        }
     }
 }
 
 //aquires I2C data and loads it to the AppState global Mutex.
 async fn aquire_i2c_data(state: Arc<Mutex<AppState>>) {
-    let mut interval = interval(Duration::from_millis(100));
-    let mut temp_data: HashMap<String, [String;2]> = HashMap::new();
+    let mut interval = interval(Duration::from_millis(250));
     let (tx, rx) = mpsc::channel();
     state.lock().await.meter_sender = Some(tx);
     let mut run = true;
     loop {
         interval.tick().await;
-        let mut val = state.lock().await.pwr_btns.clone();
-        let btn_arr = [val.Blwr[0], val.Fil[0], val.Fil[1], val.HV[0], val.HV[1]];
-        btn_arr.iter().enumerate().for_each(|btn|{
-            if let Ok(val) = val.mcp.read_pin(*btn.1) {
-                match btn.0 {
-                    0 => {
-                        temp_data.insert("Blwr".to_string(), [
-                        if val == mcp230xx::Level::High {"ON".to_string()} else {"OFF".to_string()},
-                        "OFF".to_string()]);
-                    },
-                    1 | 2 => {
-                        temp_data.insert("Fil".to_string(), [
-                        if val == mcp230xx::Level::High {"ON".to_string()} else {"OFF".to_string()},
-                        if val == mcp230xx::Level::High {"ON".to_string()} else {"OFF".to_string()}]);
-                    }
-                    3 | 4 => {
-                        temp_data.insert("HV".to_string(), [
-                        if val == mcp230xx::Level::High {"ON".to_string()} else {"OFF".to_string()},
-                        if val == mcp230xx::Level::High {"ON".to_string()} else {"OFF".to_string()}]);
-                    
-                    }
-                    _ => println!("Match statement error with MCP Pins")
-
-                }
-                    
-            } 
-        });
         if let Ok(val) = rx.try_recv() {
             run = val;
         }
-        let mut temp = 0.0;
-        let mut plate_a = 0_u32;
-        let mut plate_v = 0_u32;
-        let mut screen_a = 0_u32;
-        let mut grid_a = 0_u32;
-        if run {
-            if let Ok(t) =  val.mcp.read_val() {
-                plate_v = t[2].abs() as u32;
-                plate_a = t[1].abs() as u32;
-                temp = t[0];
-                screen_a = t[3].abs() as u32;
-                grid_a = t[4].abs() as u32;
-            } 
-        } 
+        let state_snapshot = state.lock().await.clone();
+        let pwr_btns = state_snapshot.pwr_btns.clone();
+        let tune = state_snapshot.tune.lock().await.clone();
+        let ind = state_snapshot.ind.lock().await.clone();
+        let load = state_snapshot.load.lock().await.clone();
+        let suspend_ina = !run
+            || *tune.operate.lock().unwrap()
+            || *ind.operate.lock().unwrap()
+            || *load.operate.lock().unwrap()
+            || state_snapshot.sw_pos.is_some()
+            || state_snapshot.sleep;
+        let reading = tokio::task::spawn_blocking(move || {
+            let started = Instant::now();
+            let mut val = pwr_btns;
+            let mut temp_data: HashMap<String, [String;2]> = HashMap::new();
+            let btn_arr = [val.Blwr[0], val.Fil[0], val.Fil[1], val.HV[0], val.HV[1]];
+            btn_arr.iter().enumerate().for_each(|btn|{
+                if let Ok(level) = val.mcp.read_pin(*btn.1) {
+                    match btn.0 {
+                        0 => {
+                            temp_data.insert("Blwr".to_string(), [
+                            if level == mcp230xx::Level::High {"ON".to_string()} else {"OFF".to_string()},
+                            "OFF".to_string()]);
+                        },
+                        1 | 2 => {
+                            temp_data.insert("Fil".to_string(), [
+                            if level == mcp230xx::Level::High {"ON".to_string()} else {"OFF".to_string()},
+                            if level == mcp230xx::Level::High {"ON".to_string()} else {"OFF".to_string()}]);
+                        }
+                        3 | 4 => {
+                            temp_data.insert("HV".to_string(), [
+                            if level == mcp230xx::Level::High {"ON".to_string()} else {"OFF".to_string()},
+                            if level == mcp230xx::Level::High {"ON".to_string()} else {"OFF".to_string()}]);
+                        
+                        }
+                        _ => println!("Match statement error with MCP Pins")
+
+                    }
+                        
+                } 
+            });
+            let mut temp = 0.0;
+            let mut plate_a = 0_u32;
+            let mut plate_v = 0_u32;
+            let mut screen_a = 0_u32;
+            let mut grid_a = 0_u32;
+            if !suspend_ina {
+                if let Ok(t) = val.mcp.read_val() {
+                    plate_v = t[2].abs() as u32;
+                    plate_a = t[1].abs() as u32;
+                    temp = t[0];
+                    screen_a = t[3].abs() as u32;
+                    grid_a = t[4].abs() as u32;
+                }
+            }
+            (temp_data, temp, plate_a, plate_v, screen_a, grid_a, started.elapsed())
+        }).await;
+        let Ok((temp_data, temp, plate_a, plate_v, screen_a, grid_a, elapsed)) = reading else {
+            continue;
+        };
+        if elapsed > Duration::from_millis(250) {
+            println!("I2C poll took {:?}", elapsed);
+        }
         let mut state_lck = state.lock().await;
-        state_lck.pwr_btns_state = temp_data.clone();
+        state_lck.pwr_btns_state = temp_data;
         state_lck.temperature = temp;
         state_lck.gauges.plate_a = plate_a;
         state_lck.gauges.plate_v = plate_v as u32 * 100;
@@ -940,8 +1171,10 @@ async fn sleep_save(state: Arc<Mutex<AppState>>) {
         let _ = fs::File::create(&full_path);
     }
     let mut saved_state = StoredData::new();
-    saved_state.enc.entry("PinA".to_string()).insert_entry(state_lck.clone().enc.unwrap().pin_a as u32);
-    saved_state.enc.entry("PinB".to_string()).insert_entry(state_lck.clone().enc.unwrap().pin_b as u32);
+    if let Some(enc) = state_lck.enc.clone() {
+        saved_state.enc.entry("PinA".to_string()).insert_entry(enc.pin_a as u32);
+        saved_state.enc.entry("PinB".to_string()).insert_entry(enc.pin_b as u32);
+    }
     saved_state.mem.entry("tune".to_string()).insert_entry(store_data_creator(&mut state_lck.clone(), &mut saved_state.tune, |x| x.tune.clone()).await);
     saved_state.mem.entry("ind".to_string()).insert_entry(store_data_creator(&mut state_lck.clone(), &mut saved_state.ind, |x| x.ind.clone()).await);
     saved_state.mem.entry("load".to_string()).insert_entry(store_data_creator(&mut state_lck.clone(), &mut saved_state.load, |x| x.load.clone()).await);

@@ -2,10 +2,19 @@ use std::collections::HashMap;
 use askama::Template;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, mpsc};
-use tokio::sync::{broadcast::{self, Sender}, Mutex};
+use tokio::sync::{broadcast::Sender, Mutex};
 use crate::web::{Stepper, Mcp, Encoder};
 use mcp230xx::Mcp23017;
-use rppal::gpio::{Gpio, OutputPin};
+use rppal::gpio::OutputPin;
+
+pub fn default_pwr_btn_state() -> HashMap<String, [String; 2]> {
+    HashMap::from([
+        ("Blwr".to_string(), ["OFF".to_string(), "OFF".to_string()]),
+        ("Fil".to_string(), ["OFF".to_string(), "OFF".to_string()]),
+        ("HV".to_string(), ["OFF".to_string(), "OFF".to_string()]),
+        ("Oper".to_string(), ["OFF".to_string(), "OFF".to_string()]),
+    ])
+}
 
 #[derive(Template)]
 #[template(path = "amplifier2.html")]
@@ -24,7 +33,7 @@ pub struct ConfigTemplate {
     pub files: Vec<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct SseData {
     pub tune: u32,
     pub ind: u32,
@@ -67,12 +76,7 @@ impl SseData {
             plate_a: 0,
             screen_a: 0,
             grid_a: 0,
-            pwr_btns: HashMap::from([
-                ("Blwr".to_string(), ["OFF".to_string(), "OFF".to_string()]),
-                ("Fil".to_string(), ["OFF".to_string(), "OFF".to_string()]),
-                ("HV".to_string(), ["OFF".to_string(), "OFF".to_string()]),
-                ("Oper".to_string(), ["OFF".to_string(), "OFF".to_string()]),
-            ]),
+            pwr_btns: default_pwr_btn_state(),
             temperature: 0.0,
             time: String::new(),
             call_sign: String::from("-----"),
@@ -124,13 +128,13 @@ pub struct AppState {
     pub sender: Sender<String>,
     pub meter_sender: Option<mpsc::Sender<bool>>,
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub enum Select {
     Tune,
     Ind,
     Load,
 }
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum Bands {
     M10,
     M11,
@@ -174,4 +178,3 @@ impl PwrBtns {
         }
     }
 }
-

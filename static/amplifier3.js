@@ -56,6 +56,33 @@ if (headerCall) {
     headerCall.replaceChildren(call_sign_data);
     call_sign.style.display = "none";  // keep table layout stable
 }
+const headerConn = document.getElementById("header_conn");
+const headerConnDot = document.getElementById("header_conn_dot");
+
+const themeToggle = document.getElementById("theme_toggle");
+const THEME_KEY = "amplifier-theme";
+
+function applyTheme(theme) {
+    const selectedTheme = theme === "dark" ? "dark" : "light";
+    document.body.dataset.theme = selectedTheme;
+    if (themeToggle) {
+        const darkMode = selectedTheme === "dark";
+        themeToggle.textContent = darkMode ? "Light" : "Dark";
+        themeToggle.setAttribute("aria-pressed", darkMode ? "true" : "false");
+        themeToggle.setAttribute("title", `Switch to ${darkMode ? "light" : "dark"} theme`);
+    }
+}
+
+applyTheme(localStorage.getItem(THEME_KEY) || "light");
+
+if (themeToggle) {
+    themeToggle.addEventListener("click", () => {
+        const nextTheme = document.body.dataset.theme === "dark" ? "light" : "dark";
+        localStorage.setItem(THEME_KEY, nextTheme);
+        applyTheme(nextTheme);
+        renderMeters();
+    });
+}
 
 bar_meters.appendChild(bar_meter_tune);
 bar_meters.appendChild(bar_meter_ind);
@@ -69,6 +96,11 @@ let meter_ind = document.getElementById("meter_ind");
 let meterReadingElement_ind = document.getElementById("ind");
 let meter_load = document.getElementById("meter_load");
 let meterReadingElement_load = document.getElementById("load");
+const meterContainers = {
+    tune: meter_tune?.closest(".meter-container"),
+    ind: meter_ind?.closest(".meter-container"),
+    load: meter_load?.closest(".meter-container"),
+};
 let learn_update = new EventSource("/sse");
 let last_meter_value_tune = 0;
 let last_meter_value_ind = 0;
@@ -77,8 +109,20 @@ let timeStamp = Date.now();
 let sleep = false;
 let meter_values = {};
 let meter_color = "";
-let old_data = "";
 let storeMode = false;
+let lastActivityKey = "";
+
+function setStreamStatus(isOnline) {
+    if (headerConn) {
+        headerConn.textContent = isOnline ? "ONLINE" : "OFFLINE";
+    }
+    if (headerConnDot) {
+        headerConnDot.classList.toggle("amp-dot-online", isOnline);
+        headerConnDot.classList.toggle("amp-dot-offline", !isOnline);
+    }
+}
+
+setStreamStatus(false);
 // tune, ind, load button configuration.
 const storeBtn = document.getElementById("store_btn");
 storeBtn.addEventListener("click", (event) => {
@@ -152,7 +196,6 @@ pwrBtsArr.forEach((btn) => {
     pwrBtnTableRow.appendChild(tableData);
 });
 pwrBtnTable.appendChild(pwrBtnTableRow);
-let oldPwrButtonData = "";
 function pwrBtnAction(event) {
     let formData = new FormData();
     formData.append("ID", event.target.name);
@@ -213,6 +256,36 @@ saveBtn.addEventListener("click", (event) => {
 const formVals = ["tune", "ind", "load"];
 let lastSelectorPosition = "";
 let lastBandSelected = "";
+let roundDialWindow = null;
+
+function openRoundDial(tuner) {
+    const url = `/round_dial?tuner=${encodeURIComponent(tuner)}`;
+    const popupWidth = 520;
+    const popupHeight = 720;
+    const popupLeft = Math.max(0, window.screenX + window.outerWidth - popupWidth);
+    const popupTop = Math.max(0, window.screenY + 40);
+    roundDialWindow = window.open(
+        url,
+        "Round_Dial",
+        `width=${popupWidth},height=${popupHeight},left=${popupLeft},top=${popupTop}`,
+    );
+    if (roundDialWindow) {
+        roundDialWindow.focus();
+        try {
+            roundDialWindow.moveTo(popupLeft, popupTop);
+        } catch (_err) {}
+    }
+}
+
+Object.entries(meterContainers).forEach(([tuner, container]) => {
+    if (!container) {
+        return;
+    }
+    container.style.cursor = "pointer";
+    container.title = `Open ${tuner} touch dial`;
+    container.addEventListener("click", () => openRoundDial(tuner));
+});
+
 myButtons.forEach((button, i) => {
     button.classList.add("active");
     if (i < 3) {
@@ -243,11 +316,74 @@ myButtons.forEach((button, i) => {
     });
 });
 let gauges = document.querySelectorAll(".gauge");
-console.log(Date.now());
+function updateBarMeter(container, currentValue, maxValue) {
+    let meter = container.querySelector("meter");
+    let label = container.querySelector(".meter-label");
+    if (!meter || !label) {
+        container.replaceChildren();
+        label = document.createElement("p");
+        label.className = "meter-label";
+        meter = document.createElement("meter");
+        label.appendChild(document.createTextNode(""));
+        label.appendChild(document.createElement("br"));
+        label.appendChild(meter);
+        container.appendChild(label);
+    }
+    label.firstChild.textContent = `Current value = ${currentValue}: `;
+    meter.value = currentValue;
+    meter.min = 0;
+    meter.max = maxValue;
+    meter.low = 0;
+    meter.high = 800;
+    meter.optimum = 500;
+}
+
+function renderMeters() {
+    if (!meter_values || !meter_values.ratio) {
+        return;
+    }
+    const styles = getComputedStyle(document.body);
+    const meterFill = styles.getPropertyValue("--meter-fill").trim() || "#0f0";
+    const meterFace = styles.getPropertyValue("--meter-face").trim() || "#fff";
+    const tuneDisplay = displayReading(meter_values.tune, meter_values.ratio.tune);
+    const indDisplay = displayReading(meter_values.ind, meter_values.ratio.ind);
+    const loadDisplay = displayReading(meter_values.load, meter_values.ratio.load);
+
+    meterReadingElement_tune.innerText = tuneDisplay[0];
+    meter_tune.style.background = `conic-gradient(${meterFill} ${tuneDisplay[1] * 0.9}deg, ${meterFace} 0deg)`;
+    meterReadingElement_ind.innerText = indDisplay[0];
+    meter_ind.style.background = `conic-gradient(${meterFill} ${indDisplay[1] * 0.9}deg, ${meterFace} 0deg)`;
+    meterReadingElement_load.innerText = loadDisplay[0];
+    meter_load.style.background = `conic-gradient(${meterFill} ${loadDisplay[1] * 0.9}deg, ${meterFace} 0deg)`;
+
+    gauges.forEach((gauge, i) => {
+        switch (i) {
+            case 0:
+                gauge.style.setProperty("--value", meter_values.plate_v / 10000);
+                gauge.textContent = Math.round(meter_values.plate_v) + "V";
+                break;
+            case 1:
+                gauge.style.setProperty("--value", meter_values.plate_a / 3);
+                gauge.textContent = Math.round(meter_values.plate_a) + "A";
+                break;
+            case 2:
+                gauge.style.setProperty("--value", meter_values.screen_a / 200);
+                gauge.textContent = Math.round(meter_values.screen_a) + "mA";
+                break;
+            case 3:
+                gauge.style.setProperty("--value", meter_values.grid_a / 50);
+                gauge.textContent = Math.round(meter_values.grid_a) + "mA";
+                break;
+        }
+    });
+}
+
 learn_update.onmessage = (e) => {
     if (e.data == "close") {
+        setStreamStatus(false);
         learn_update.close();
     } else {
+        setStreamStatus(true);
         meter_values = JSON.parse(e.data);
         if (configWindow != null) {
             configWindow.postMessage(
@@ -261,32 +397,10 @@ learn_update.onmessage = (e) => {
         }
         clock_data.innerText = meter_values.time;
         call_sign_data.innerText = meter_values.call_sign;
-        bar_meter_tune.innerHTML =
-            "<p>Current value = " +
-            meter_values.tune +
-            ": <br><meter value=" +
-            meter_values.tune +
-            ' min="0" max= ' +
-            meter_values.max.tune +
-            ' low="0" high="800" optimum ="500" ></meter></p>';
-        bar_meter_ind.innerHTML =
-            "<p>Current value = " +
-            meter_values.ind +
-            ": <br><meter value=" +
-            meter_values.ind +
-            ' min="0" max= ' +
-            meter_values.max.ind +
-            ' low="0" high="800" optimum ="500" ></meter></p>';
-        bar_meter_load.innerHTML =
-            "<p>Current value = " +
-            meter_values.load +
-            ": <br><meter value=" +
-            meter_values.load +
-            ' min="0" max= ' +
-            meter_values.max.load +
-            ' low="0" high="800" optimum ="500" ></meter></p>';
+        updateBarMeter(bar_meter_tune, meter_values.tune, meter_values.max.tune);
+        updateBarMeter(bar_meter_ind, meter_values.ind, meter_values.max.ind);
+        updateBarMeter(bar_meter_load, meter_values.load, meter_values.max.load);
         statusBarContents.innerText = `Status Bar: ${meter_values.status}`;
-        console.log(meter_values.pwr_btns);
         if (meter_values.pwr_btns.Fil[1] == "ON") {
             pwrBtnTableRow.childNodes[1].childNodes[0].childNodes[0].childNodes[1].setAttribute(
                 "style",
@@ -307,10 +421,6 @@ learn_update.onmessage = (e) => {
                 "style",
             );
         }
-        console.log("BAND!!!!");
-        console.log(meter_values.band);
-        console.log(typeof meter_values.band);
-        console.log(meter_values.sw_pos);
         if (
             lastSelectorPosition !== meter_values.sw_pos ||
             lastBandSelected !== meter_values.band
@@ -324,16 +434,12 @@ learn_update.onmessage = (e) => {
 
             switch (meter_values.sw_pos) {
                 case "Tune":
-                    console.log("tune selected");
-                    console.log(`ratio is: ${meter_values.ratio.tune}`);
                     tuneBtn.classList.add("hover_not_disabled");
                     break;
                 case "Ind":
-                    console.log("ind selected");
                     indBtn.classList.add("hover_not_disabled");
                     break;
                 case "Load":
-                    console.log("load selected");
                     loadBtn.classList.add("hover_not_disabled");
                     break;
             }
@@ -347,10 +453,22 @@ learn_update.onmessage = (e) => {
             lastBandSelected = meter_values.band;
         }
 
-        if (old_data == JSON.stringify(meter_values)) {
+        const activityKey = [
+            meter_values.tune,
+            meter_values.ind,
+            meter_values.load,
+            meter_values.band,
+            meter_values.sw_pos,
+            meter_values.temperature,
+            meter_values.plate_v,
+            meter_values.plate_a,
+            meter_values.screen_a,
+            meter_values.grid_a,
+            meter_values.status,
+        ].join("|");
+        if (lastActivityKey === activityKey) {
             if (Date.now() - timeStamp > 120000 && sleep === false) {
                 sleep = true;
-                console.log("time expired");
                 let formData = new FormData();
                 formData.append("action", "stop");
                 fetch("/stop", {
@@ -360,13 +478,18 @@ learn_update.onmessage = (e) => {
             }
         } else {
             timeStamp = Date.now();
-            old_data = JSON.stringify(meter_values);
+            lastActivityKey = activityKey;
         }
+        renderMeters();
     }
 };
-window.addEventListener("message", (e) => {
-    console.log(e);
-});
+learn_update.onopen = () => {
+    setStreamStatus(true);
+};
+
+learn_update.onerror = () => {
+    setStreamStatus(false);
+};
 function removeStore() {
     storeBtn.classList.remove("hover_not_disabled");
     storeMode = false;
@@ -391,60 +514,4 @@ function displayReading(val, ratio) {
     let meter_value = val - 400 * count;
     let color = setColor(meter_value);
     return [count, meter_value, color];
-}
-//startMeterAnimation();
-// Function to animate the meter
-setTimeout(startMeterAnimation, 1000);
-function startMeterAnimation() {
-    setInterval(() => {
-
-          if (!meter_values || !meter_values.ratio) { return; }
-meterReadingElement_tune.innerText = displayReading(
-            meter_values.tune,
-            meter_values.ratio.tune,
-        )[0];
-        meter_tune.style.background = `conic-gradient(${"#0f0"} ${displayReading(meter_values.tune, meter_values.ratio.tune)[1] * 0.9}deg, #fff 0deg)`;
-        meterReadingElement_ind.innerText = displayReading(
-            meter_values.ind,
-            meter_values.ratio.ind,
-        )[0];
-        meter_ind.style.background = `conic-gradient(${"#0f0"} ${displayReading(meter_values.ind, meter_values.ratio.ind)[1] * 0.9}deg, #fff 0deg)`;
-        meterReadingElement_load.innerText = displayReading(
-            meter_values.load,
-            meter_values.ratio.load,
-        )[0];
-        meter_load.style.background = `conic-gradient(${"#0f0"} ${displayReading(meter_values.load, meter_values.ratio.load)[1] * 0.9}deg, #fff 0deg)`;
-        gauges.forEach((gauge, i) => {
-            switch (i) {
-                case 0:
-                    gauge.style.setProperty(
-                        "--value",
-                        meter_values.plate_v / 10000,
-                    );
-                    gauge.innerHTML = Math.round(meter_values.plate_v) + "V";
-                    break;
-                case 1:
-                    gauge.style.setProperty(
-                        "--value",
-                        meter_values.plate_a / 3,
-                    );
-                    gauge.innerHTML = Math.round(meter_values.plate_a) + "A";
-                    break;
-                case 2:
-                    gauge.style.setProperty(
-                        "--value",
-                        meter_values.screen_a / 200,
-                    );
-                    gauge.innerHTML = Math.round(meter_values.screen_a) + "mA";
-                    break;
-                case 3:
-                    gauge.style.setProperty(
-                        "--value",
-                        meter_values.grid_a / 50,
-                    );
-                    gauge.innerHTML = Math.round(meter_values.grid_a) + "mA";
-                    break;
-            }
-        });
-    }, 10);
 }

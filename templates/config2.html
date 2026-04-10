@@ -8,84 +8,329 @@
 
   <!-- Scoped config-page polish (won't mess with main UI) -->
   <style>
+    :root {
+      --cfg-bg: #07131f;
+      --cfg-panel: rgba(9, 20, 33, 0.82);
+      --cfg-panel-strong: rgba(11, 24, 40, 0.94);
+      --cfg-border: rgba(136, 197, 255, 0.18);
+      --cfg-border-strong: rgba(136, 197, 255, 0.32);
+      --cfg-text: #eaf4ff;
+      --cfg-muted: #9db4ca;
+      --cfg-accent: #59c1ff;
+      --cfg-accent-warm: #ffd166;
+      --cfg-glow: rgba(89, 193, 255, 0.22);
+      --cfg-shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(0, 174, 255, 0.14), transparent 32%),
+        radial-gradient(circle at top right, rgba(255, 209, 102, 0.12), transparent 26%),
+        linear-gradient(180deg, #07131f 0%, #0b1726 55%, #06111d 100%);
+      color: var(--cfg-text);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+
     .cfg-page {
       min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: flex-start;
-      padding: 24px;
+      padding: clamp(1rem, 3vw, 2rem);
     }
+
     .cfg-card {
-      width: min(980px, 100%);
-      background: #fff;
-      border: 1px solid rgba(0,0,0,0.12);
-      border-radius: 14px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.10);
-      padding: 18px 18px 22px;
+      width: min(1120px, 100%);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)),
+        var(--cfg-panel);
+      border: 1px solid var(--cfg-border);
+      border-radius: 1.5rem;
+      box-shadow: var(--cfg-shadow);
+      padding: clamp(1rem, 2vw, 1.5rem);
+      backdrop-filter: blur(14px);
     }
+
     .cfg-title {
       display: flex;
-      align-items: baseline;
+      align-items: flex-end;
       justify-content: space-between;
-      gap: 12px;
-      padding: 10px 12px 16px;
-      border-bottom: 1px solid rgba(0,0,0,0.10);
-      margin-bottom: 14px;
+      gap: 1rem;
+      padding: 0.5rem 0.5rem 1.2rem;
+      border-bottom: 1px solid var(--cfg-border);
+      margin-bottom: 1.25rem;
     }
-    .cfg-title h2 { margin: 0; font-family: Arial, sans-serif; }
-    .cfg-note { margin: 0; color: #444; font-family: Arial, sans-serif; }
+
+    .cfg-title h2 {
+      margin: 0 0 0.35rem;
+      font-size: clamp(1.75rem, 4vw, 2.8rem);
+      line-height: 1.05;
+      letter-spacing: 0.02em;
+    }
+
+    .cfg-title-copy {
+      max-width: 42rem;
+    }
+
+    .cfg-lead {
+      margin: 0;
+      color: var(--cfg-muted);
+      font-size: 1rem;
+    }
+
+    .cfg-note {
+      margin: 0;
+      padding: 0.8rem 1rem;
+      border-radius: 999px;
+      background: rgba(89, 193, 255, 0.08);
+      border: 1px solid rgba(89, 193, 255, 0.16);
+      color: #d8ecff;
+      white-space: nowrap;
+      font-size: 0.95rem;
+    }
+
     .cfg-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px;
-      margin: 12px 0 18px;
+      gap: 1rem;
+      margin: 0 0 1rem;
     }
-    @media (max-width: 800px) { .cfg-row { grid-template-columns: 1fr; } }
+
+    @media (max-width: 860px) {
+      .cfg-row {
+        grid-template-columns: 1fr;
+      }
+
+      .cfg-title {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .cfg-note {
+        white-space: normal;
+      }
+    }
 
     .cfg-block {
-      border: 1px solid rgba(0,0,0,0.10);
-      border-radius: 12px;
-      padding: 12px;
-      background: rgba(0,0,0,0.02);
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--cfg-border);
+      border-radius: 1.25rem;
+      padding: 1rem;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015)),
+        var(--cfg-panel-strong);
     }
+
+    .cfg-block::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto auto 0;
+      width: 100%;
+      height: 0.22rem;
+      background: linear-gradient(90deg, var(--cfg-accent), var(--cfg-accent-warm));
+      opacity: 0.9;
+    }
+
     .cfg-block h3 {
-      margin: 0 0 10px;
-      font-family: Arial, sans-serif;
-      font-size: 16px;
+      margin: 0 0 0.3rem;
+      font-size: 1.15rem;
+      letter-spacing: 0.02em;
     }
-    .cfg-block label, .cfg-block p {
-      font-family: Arial, sans-serif;
-      font-size: 14px;
+
+    .cfg-block p,
+    .cfg-block label {
+      color: var(--cfg-muted);
+      font-size: 0.95rem;
     }
-    .cfg-block select, .cfg-block input[type="text"] {
-  display: block;
-  width: 100%;
-  max-width: 260px;
-  padding: 6px;
-  margin: 6px 0 10px;
-}
+
+    .cfg-subtext {
+      margin: 0 0 1rem;
+      color: var(--cfg-muted);
+      font-size: 0.93rem;
+    }
+
+    .cfg-form-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.85rem;
+      align-items: end;
+    }
+
+    .cfg-field {
+      display: grid;
+      gap: 0.4rem;
+    }
+
+    .cfg-inline-form {
+      display: grid;
+      gap: 0.8rem;
+    }
+
+    .cfg-block select,
+    .cfg-block input[type="text"] {
+      display: block;
+      width: 100%;
+      min-height: 2.9rem;
+      padding: 0.8rem 0.9rem;
+      margin: 0;
+      box-sizing: border-box;
+      border-radius: 0.9rem;
+      border: 1px solid rgba(157, 180, 202, 0.24);
+      background: rgba(4, 12, 20, 0.72);
+      color: var(--cfg-text);
+      font-size: 0.98rem;
+      outline: none;
+      transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+    }
+
+    .cfg-block select:focus,
+    .cfg-block input[type="text"]:focus {
+      border-color: var(--cfg-accent);
+      box-shadow: 0 0 0 0.22rem var(--cfg-glow);
+      transform: translateY(-1px);
+    }
+
+    .cfg-block input[type="submit"],
+    .cfg-block button[type="submit"],
+    .cfg-block button[type="button"] {
+      appearance: none;
+      border: 1px solid rgba(89, 193, 255, 0.24);
+      background: linear-gradient(180deg, rgba(89, 193, 255, 0.22), rgba(89, 193, 255, 0.08));
+      color: var(--cfg-text);
+      min-height: 2.8rem;
+      padding: 0.8rem 1rem;
+      border-radius: 0.95rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.18);
+      transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    }
+
+    .cfg-block input[type="submit"]:hover,
+    .cfg-block button[type="submit"]:hover,
+    .cfg-block button[type="button"]:hover {
+      transform: translateY(-1px);
+      border-color: var(--cfg-border-strong);
+      box-shadow: 0 0.9rem 1.75rem rgba(0, 0, 0, 0.24);
+    }
 
     .cfg-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 8px;
+      gap: 0.75rem;
+      margin-top: 1rem;
     }
 
-    /* Make disabled buttons obvious but still consistent */
     .button:disabled {
-      opacity: 0.45;
+      opacity: 0.38;
       cursor: not-allowed;
       box-shadow: none;
     }
 
+    .cfg-assignment {
+      margin-top: 0.5rem;
+    }
+
+    .cfg-assignment table {
+      overflow: hidden;
+      border-radius: 1rem;
+      border: 1px solid var(--cfg-border);
+      background: rgba(4, 12, 20, 0.45);
+    }
+
+    .cfg-assignment th {
+      background: rgba(89, 193, 255, 0.1);
+      color: #dff2ff;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .cfg-assignment td {
+      color: #d9e8f8;
+      font-size: 0.95rem;
+    }
+
+    .cfg-assignment td:first-child,
+    .cfg-assignment th:first-child {
+      font-weight: 700;
+      color: #fff7d1;
+    }
+
+    .cfg-status-wrap {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
     .cfg-status {
-      margin-top: 14px;
-      padding: 10px 12px;
-      border: 1px solid rgba(0,0,0,0.10);
-      border-radius: 12px;
-      background: rgba(0,0,0,0.03);
-      font-family: Arial, sans-serif;
+      margin-top: 0;
+      padding: 1rem;
+      border: 1px solid var(--cfg-border);
+      border-radius: 1rem;
+      background: rgba(4, 12, 20, 0.55);
+      color: var(--cfg-text);
+    }
+
+    .cfg-microcards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+
+    .cfg-chip {
+      padding: 0.9rem;
+      border-radius: 1rem;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .cfg-chip strong {
+      display: block;
+      font-size: 1.1rem;
+      margin-top: 0.25rem;
+      color: #fff;
+    }
+
+    .cfg-chip span {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--cfg-muted);
+    }
+
+    .cfg-exit {
+      justify-content: center;
+      margin-top: 1.25rem;
+    }
+
+    .cfg-exit .button {
+      min-width: 11rem;
+      background: linear-gradient(180deg, rgba(255, 209, 102, 0.25), rgba(255, 209, 102, 0.08));
+      color: #fff5d0;
+      border: 1px solid rgba(255, 209, 102, 0.28);
+    }
+
+    @media (max-width: 920px) {
+      .cfg-form-grid,
+      .cfg-status-wrap,
+      .cfg-microcards {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .cfg-card {
+        padding: 0.85rem;
+      }
+
+      .cfg-block {
+        padding: 0.9rem;
+      }
     }
   </style>
 </head>
@@ -95,7 +340,10 @@
   <div class="cfg-card">
 
     <div class="cfg-title">
-      <h2>Amplifier Configuration</h2>
+      <div class="cfg-title-copy">
+        <h2>Amplifier Configuration</h2>
+        <p class="cfg-lead">Shape the encoder, tune motors, and profile storage from one control surface without losing the current workflow.</p>
+      </div>
       <p class="cfg-note">PIN 16 Reserved as Enable pin.</p>
     </div>
 
@@ -103,22 +351,29 @@
     <div class="cfg-row">
       <div class="cfg-block">
         <h3>Encoder</h3>
+        <p class="cfg-subtext">Assign the rotary encoder before enabling the tuner motor controls.</p>
         <form id="enc_form" action="/config" method="post" enctype="multipart/form-data">
-          <label for="PinA">Pin A:</label>
-          <select name="PinA" id="PinA">
-            <option value=""></option>
-            {% for pin in pins %}
-            <option value="{{pin}}">{{pin}}</option>
-            {% endfor %}
-          </select>
+          <div class="cfg-form-grid">
+            <div class="cfg-field">
+              <label for="PinA">Pin A</label>
+              <select name="PinA" id="PinA">
+                <option value=""></option>
+                {% for pin in pins %}
+                <option value="{{pin}}">{{pin}}</option>
+                {% endfor %}
+              </select>
+            </div>
 
-          <label for="PinB">Pin B:</label>
-          <select name="PinB" id="PinB">
-            <option value=""></option>
-            {% for pin in pins %}
-            <option value="{{pin}}">{{pin}}</option>
-            {% endfor %}
-          </select>
+            <div class="cfg-field">
+              <label for="PinB">Pin B</label>
+              <select name="PinB" id="PinB">
+                <option value=""></option>
+                {% for pin in pins %}
+                <option value="{{pin}}">{{pin}}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
 
           <div class="cfg-actions">
             <input id="add_enc_btn" name="add_enc" type="submit" value="Add Enc" />
@@ -128,7 +383,8 @@
 
       <div class="cfg-block">
         <h3>Callsign</h3>
-        <form action="#" method="post" enctype="multipart/form-data">
+        <p class="cfg-subtext">Broadcast your station identity to the main panel header.</p>
+        <form class="cfg-inline-form" action="#" method="post" enctype="multipart/form-data">
           <input type="text" name="call_sign" placeholder="e.g. KD4YAI" />
           <input type="submit" name="submit" value="Add_callsing">
         </form>
@@ -139,38 +395,47 @@
     <div class="cfg-row">
       <div class="cfg-block">
         <h3>Stepper Setup</h3>
+        <p class="cfg-subtext">Configure the motor pins and ratio, then arm each tuner section individually.</p>
 
         <form id="stepper_button_form" action="#" method="post" enctype="multipart/form-data">
-          <label for="PinA">Pin A:</label>
-          <select name="PinA" id="PinA">
-            <option value=""></option>
-            {% for pin in pins %}
-            <option value="{{pin}}">{{pin}}</option>
-            {% endfor %}
-          </select>
+          <div class="cfg-form-grid">
+            <div class="cfg-field">
+              <label for="PinA">Pin A</label>
+              <select name="PinA" id="PinA">
+                <option value=""></option>
+                {% for pin in pins %}
+                <option value="{{pin}}">{{pin}}</option>
+                {% endfor %}
+              </select>
+            </div>
 
-          <label for="PinB">Pin B:</label>
-          <select name="PinB" id="PinB">
-            <option value=""></option>
-            {% for pin in pins %}
-            <option value="{{pin}}">{{pin}}</option>
-            {% endfor %}
-          </select>
+            <div class="cfg-field">
+              <label for="PinB">Pin B</label>
+              <select name="PinB" id="PinB">
+                <option value=""></option>
+                {% for pin in pins %}
+                <option value="{{pin}}">{{pin}}</option>
+                {% endfor %}
+              </select>
+            </div>
 
-          <label for="ratio">Choose Ratio:</label>
-          <select name="ratio" id="ratio">
-            <option value=""></option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-            <option value="6">6</option>
-            <option value="7">7</option>
-            <option value="8">8</option>
-            <option value="9">9</option>
-            <option value="10">10</option>
-          </select>
+            <div class="cfg-field">
+              <label for="ratio">Choose Ratio</label>
+              <select name="ratio" id="ratio">
+                <option value=""></option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+                <option value="9">9</option>
+                <option value="10">10</option>
+              </select>
+            </div>
+          </div>
         </form>
 
         <div class="cfg-actions">
@@ -182,7 +447,8 @@
 
       <div class="cfg-block">
         <h3>Callsign</h3>
-        <form action="#" method="post" enctype="multipart/form-data">
+        <p class="cfg-subtext">Keep the station label current while you tune and store profiles.</p>
+        <form class="cfg-inline-form" action="#" method="post" enctype="multipart/form-data">
           <input type="text" name="call_sign" placeholder="e.g. KD4YAI" />
           <input type="submit" name="submit" value="Add_callsing">
         </form>
@@ -190,8 +456,9 @@
     </div>
     {% endif %}
 
-    <div class="cfg-block">
+    <div class="cfg-block cfg-assignment">
       <h3>Current Assignments</h3>
+      <p class="cfg-subtext">Live wiring and ratio summary for the encoder and all three tuning sections.</p>
 
       <table>
         <tr>
@@ -264,14 +531,31 @@
         </tr>
       </table>
 
-      <div class="cfg-status">
-        <div id="status_bar"></div>
+      <div class="cfg-status-wrap">
+        <div class="cfg-status">
+          <div id="status_bar"></div>
+        </div>
+        <div class="cfg-microcards">
+          <div class="cfg-chip">
+            <span>Encoder</span>
+            <strong>{% if enc %}Online{% else %}Awaiting Setup{% endif %}</strong>
+          </div>
+          <div class="cfg-chip">
+            <span>Profiles</span>
+            <strong>{{ files.len() }}</strong>
+          </div>
+          <div class="cfg-chip">
+            <span>GPIO Pool</span>
+            <strong>{{ pins.len() }}</strong>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="cfg-row">
       <div class="cfg-block">
         <h3>Load Saved Profile</h3>
+        <p class="cfg-subtext">Pull a saved amplifier setup back into the current runtime state.</p>
         <form id="select_file" action="/load" method="post" enctype="multipart/form-data">
           <label for="files">Choose a file:</label>
           <select name="files" id="files">
@@ -288,6 +572,7 @@
 
       <div class="cfg-block">
         <h3>Save Profile</h3>
+        <p class="cfg-subtext">Write the current wiring and memory values to a new profile file.</p>
         <form id="input_file" action="/load" method="post" enctype="multipart/form-data">
           <label>Enter filename:</label>
           <input name="file_name" type="text" />
@@ -298,7 +583,7 @@
       </div>
     </div>
 
-    <div class="cfg-actions" style="justify-content:center;">
+    <div class="cfg-actions cfg-exit">
       <button name="exit" class="button" id="exit" type="button">Return</button>
     </div>
 

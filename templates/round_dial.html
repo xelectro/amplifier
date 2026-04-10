@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Round Dial</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/test.css">
+</head>
+<body>
+    <main class="dial-page">
+        <section class="dial-shell">
+            <p class="dial-kicker">Touch Wheel</p>
+            <h1 id="dial_title">Loading...</h1>
+            <p id="dial_status" class="dial-status">Connecting...</p>
+
+            <div id="touch_wheel" class="touch-wheel">
+                <div class="touch-wheel__ticks"></div>
+                <div class="touch-wheel__center">
+                    <span class="touch-wheel__value" id="dial_value">0</span>
+                    <span class="touch-wheel__meta" id="dial_meta">0 / 0</span>
+                </div>
+                <div id="wheel_indicator" class="wheel-indicator"></div>
+            </div>
+
+            <div class="dial-readout">
+                <div>
+                    <span class="dial-readout__label">Display Units</span>
+                    <strong id="dial_display_units">0</strong>
+                </div>
+                <div>
+                    <span class="dial-readout__label">Raw Steps</span>
+                    <strong id="dial_raw_units">0</strong>
+                </div>
+                <div>
+                    <span class="dial-readout__label">Ratio</span>
+                    <strong id="dial_ratio">1:1</strong>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+    const params = new URLSearchParams(window.location.search);
+    const tuner = (params.get("tuner") || "tune").toLowerCase();
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(`${protocol}://${window.location.host}/round_dial_ws?tuner=${encodeURIComponent(tuner)}`);
+
+    const dialTitle = document.getElementById("dial_title");
+    const dialStatus = document.getElementById("dial_status");
+    const dialValue = document.getElementById("dial_value");
+    const dialMeta = document.getElementById("dial_meta");
+    const dialDisplayUnits = document.getElementById("dial_display_units");
+    const dialRawUnits = document.getElementById("dial_raw_units");
+    const dialRatio = document.getElementById("dial_ratio");
+    const wheel = document.getElementById("touch_wheel");
+    const indicator = document.getElementById("wheel_indicator");
+
+    let ratio = 1;
+    let maxDisplay = 0;
+    let displayPosition = 0;
+    let rawPosition = 0;
+    let dragging = false;
+    let lastDragAngle = null;
+    let dragAccumulator = 0;
+    let queuedPosition = null;
+    let pendingPosition = null;
+    let sendTimer = null;
+    const SEND_INTERVAL_MS = 25;
+
+    function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+    }
+
+    function getPointerAngle(event) {
+        const rect = wheel.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        return Math.atan2(event.clientY - centerY, event.clientX - centerX) * 180 / Math.PI;
+    }
+
+    function normalizeDelta(delta) {
+        let output = delta;
+        while (output > 180) output -= 360;
+        while (output < -180) output += 360;
+        return output;
+    }
+
+    function renderDial() {
+        const turnUnits = displayPosition % 400;
+        const turns = Math.floor(displayPosition / 400);
+        indicator.style.transform = `rotate(${(turnUnits * 0.9) - 90}deg)`;
+        dialValue.textContent = turns;
+        dialMeta.textContent = `${turnUnits} / 400`;
+        dialDisplayUnits.textContent = displayPosition;
+        dialRawUnits.textContent = rawPosition;
+        dialRatio.textContent = `${ratio}:1`;
+    }
+
+    function flushTarget() {
+        if (pendingPosition == null) {
+            sendTimer = null;
+            return;
+        }
+        if (socket.readyState !== WebSocket.OPEN) {
+            sendTimer = null;
+            return;
+        }
+        queuedPosition = pendingPosition;
+        pendingPosition = null;
+        socket.send(JSON.stringify({
+            type: "set",
+            display_position: queuedPosition,
+        }));
+        sendTimer = null;
+    }
+
+    function sendTarget(nextPosition) {
+        pendingPosition = nextPosition;
+        if (sendTimer != null) {
+            return;
+        }
+        sendTimer = window.setTimeout(flushTarget, SEND_INTERVAL_MS);
+    }
+
+    function applyState(message) {
+        ratio = Math.max(1, message.ratio || 1);
+        maxDisplay = Math.max(0, message.max_display || 0);
+        dialTitle.textContent = `${message.label} Dial`;
+        dialStatus.textContent = message.status || "Connected";
+        if (!dragging) {
+            displayPosition = clamp(message.display_position || 0, 0, maxDisplay);
+            rawPosition = Math.max(0, message.raw_position || 0);
+            renderDial();
+        }
+    }
+
+    socket.addEventListener("open", () => {
+        dialStatus.textContent = "Connected";
+    });
+
+    socket.addEventListener("message", (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === "error") {
+            dialStatus.textContent = message.status || "Dial error";
+            return;
+        }
+        if (queuedPosition === message.display_position) {
+            queuedPosition = null;
+        }
+        applyState(message);
+    });
+
+    socket.addEventListener("close", () => {
+        dialStatus.textContent = "Disconnected";
+    });
+
+    function updateFromPointer(event) {
+        const angle = getPointerAngle(event);
+        const delta = normalizeDelta(angle - lastDragAngle);
+        lastDragAngle = angle;
+        dragAccumulator += delta / 0.9;
+        const wholeSteps = dragAccumulator > 0
+            ? Math.floor(dragAccumulator)
+            : Math.ceil(dragAccumulator);
+        if (wholeSteps === 0) {
+            return;
+        }
+        dragAccumulator -= wholeSteps;
+        const nextPosition = clamp(displayPosition + wholeSteps, 0, maxDisplay);
+        if (nextPosition === displayPosition) {
+            return;
+        }
+        displayPosition = nextPosition;
+        rawPosition = displayPosition * ratio;
+        renderDial();
+        sendTarget(displayPosition);
+    }
+
+    wheel.addEventListener("pointerdown", (event) => {
+        dragging = true;
+        lastDragAngle = getPointerAngle(event);
+        dragAccumulator = 0;
+        wheel.setPointerCapture(event.pointerId);
+        dialStatus.textContent = "Dial engaged";
+    });
+
+    wheel.addEventListener("pointermove", (event) => {
+        if (!dragging) {
+            return;
+        }
+        updateFromPointer(event);
+    });
+
+    function endDrag() {
+        dragging = false;
+        lastDragAngle = null;
+        dragAccumulator = 0;
+        flushTarget();
+        if (queuedPosition == null) {
+            dialStatus.textContent = "Connected";
+        }
+    }
+
+    wheel.addEventListener("pointerup", endDrag);
+    wheel.addEventListener("pointercancel", endDrag);
+    wheel.addEventListener("lostpointercapture", endDrag);
+    window.addEventListener("load", () => {
+        try {
+            const popupWidth = Math.max(window.outerWidth || 520, 520);
+            const rightEdge = window.screen.availLeft + window.screen.availWidth;
+            const targetLeft = Math.max(window.screen.availLeft, rightEdge - popupWidth);
+            const targetTop = Math.max(window.screen.availTop, window.screen.availTop + 40);
+            window.moveTo(targetLeft, targetTop);
+        } catch (_err) {}
+    });
+    </script>
+</body>
+</html>
