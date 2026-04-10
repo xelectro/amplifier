@@ -19,6 +19,8 @@
   --meter-gloss: rgba(255, 255, 255, 0.45);
   --meter-shadow: rgba(15, 23, 42, 0.18);
   --meter-core-shadow: rgba(15, 23, 42, 0.1);
+  --meter-overlay: rgba(255, 255, 255, 0.08);
+  --meter-center-gloss: rgba(255, 255, 255, 0.22);
   --gauge-face: #ffffff;
   --gauge-text: #111827;
   --gauge-cutout: #eef2f7;
@@ -61,6 +63,8 @@ body[data-theme="dark"] {
   --meter-gloss: rgba(255, 255, 255, 0.12);
   --meter-shadow: rgba(2, 8, 23, 0.48);
   --meter-core-shadow: rgba(2, 8, 23, 0.4);
+  --meter-overlay: rgba(148, 163, 184, 0.06);
+  --meter-center-gloss: rgba(255, 255, 255, 0.09);
   --gauge-face: #162235;
   --gauge-text: #f8fbff;
   --gauge-cutout: #243246;
@@ -122,9 +126,9 @@ body {
             transform: rotate(-90deg);
             border: 1px solid var(--meter-rim);
             box-shadow:
-              0 1.1rem 2rem -0.9rem var(--meter-shadow),
-              inset 0 0.2rem 0.6rem var(--meter-gloss),
-              inset 0 -0.75rem 1.4rem rgba(0, 0, 0, 0.14);
+              0 0.7rem 1.4rem -0.9rem var(--meter-shadow),
+              inset 0 0.15rem 0.45rem var(--meter-gloss),
+              inset 0 -0.4rem 0.9rem rgba(0, 0, 0, 0.12);
             overflow: hidden;
         }
 
@@ -135,12 +139,8 @@ body {
             border-radius: 50%;
             background:
               radial-gradient(circle at 30% 26%, var(--meter-gloss), transparent 28%),
-              repeating-conic-gradient(
-                from 0deg,
-                rgba(255, 255, 255, 0.08) 0deg 3deg,
-                rgba(255, 255, 255, 0.01) 3deg 11deg
-              );
-            opacity: 0.95;
+              linear-gradient(160deg, var(--meter-overlay), transparent 48%);
+            opacity: 0.82;
             pointer-events: none;
         }
 
@@ -149,20 +149,15 @@ body {
             width: 70%;
             height: 70%;
             background:
-              radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.28), transparent 24%),
-              repeating-linear-gradient(
-                135deg,
-                rgba(255, 255, 255, 0.045) 0 6px,
-                rgba(0, 0, 0, 0.025) 6px 12px
-              ),
+              radial-gradient(circle at 35% 30%, var(--meter-center-gloss), transparent 24%),
               var(--meter-face);
             position: absolute;
             top: 15%;
             left: 15%;
             border-radius: 50%;
             box-shadow:
-              inset 0 0.35rem 0.9rem var(--meter-gloss),
-              inset 0 -0.7rem 1.1rem var(--meter-core-shadow);
+              inset 0 0.2rem 0.55rem var(--meter-gloss),
+              inset 0 -0.45rem 0.75rem var(--meter-core-shadow);
         }
 
         .meter-reading {
@@ -197,7 +192,7 @@ body {
             background: var(--line-color);
             position: absolute;
             transform-origin: 0px 100px;
-            box-shadow: var(--line-shadow);
+            box-shadow: none;
             border-radius: 50px;
         }
 /*for meter track*/
@@ -255,7 +250,6 @@ table {
   border-collapse: collapse;
   table-layout: fixed;
   background: var(--table-bg);
-  backdrop-filter: blur(10px);
 }
 
 th, td {
@@ -433,7 +427,6 @@ input:checked + .slider:before {
   padding: 10px 14px;
   background: var(--header-bg);
   border-bottom: 1px solid var(--header-border);
-  backdrop-filter: blur(14px);
 }
 
 .amp-header-left,

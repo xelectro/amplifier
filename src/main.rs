@@ -719,27 +719,46 @@ async fn load(State(state): State<Arc<Mutex<AppState>>>, form: Multipart) ->
                     stepper_lck.mem.entry(band.to_string()).and_modify(|v| v.store(value, Ordering::Relaxed));
                 } 
             }  
-            state_lck.enc = if output.enc.contains_key("PinA") && output.enc.contains_key("PinB") {
-                if let Some(enc) = &state_lck.enc {
-                    let pin_a = enc.pin_a;
-                    let pin_b = enc.pin_b;
-                    let _ = process_pins(&mut state_lck.clone().gpio_pins, pin_a, false);
-                    let _ = process_pins(&mut state_lck.clone().gpio_pins, pin_b, false);
-                    *enc.stop.lock().unwrap() = true;
-                    interval(Duration::from_millis(50)).tick().await;
-                    state_lck.enc = None;
-                    println!("Deconfiguring Encoder to load new config");
-                }
-                Some(Encoder::new( 
+            let loaded_encoder_pins = if output.enc.contains_key("PinA") && output.enc.contains_key("PinB") {
+                Some((
                     *output.enc.get("PinA").unwrap() as u8,
                     *output.enc.get("PinB").unwrap() as u8,
                 ))
             } else {
                 None
             };
-            if let Some(mut enc) = state_lck.enc.clone() {
-                let _ = enc.run();
-                println!("Ecoder Run activated from File load Fn");
+
+            let reuse_existing_encoder = matches!(
+                (&state_lck.enc, loaded_encoder_pins),
+                (Some(enc), Some((pin_a, pin_b))) if enc.pin_a == pin_a && enc.pin_b == pin_b
+            );
+
+            if !reuse_existing_encoder {
+                if let Some(enc) = state_lck.enc.take() {
+                    let pin_a = enc.pin_a;
+                    let pin_b = enc.pin_b;
+                    let _ = process_pins(&mut state_lck.gpio_pins, pin_a, false);
+                    let _ = process_pins(&mut state_lck.gpio_pins, pin_b, false);
+                    *enc.stop.lock().unwrap() = true;
+                    interval(Duration::from_millis(150)).tick().await;
+                    println!("Deconfiguring Encoder to load new config");
+                }
+
+                state_lck.enc = if let Some((pin_a, pin_b)) = loaded_encoder_pins {
+                    let _ = process_pins(&mut state_lck.gpio_pins, pin_a, true);
+                    let _ = process_pins(&mut state_lck.gpio_pins, pin_b, true);
+                    Some(Encoder::new(pin_a, pin_b))
+                } else {
+                    None
+                };
+
+                if let Some(mut enc) = state_lck.enc.clone() {
+                    let _ = enc.run();
+                    println!("Ecoder Run activated from File load Fn");
+                }
+            } else if let Some(enc) = state_lck.enc.clone() {
+                enc.count.store(0, Ordering::Relaxed);
+                println!("Reusing existing encoder for loaded config");
             }
             state_lck.band = output.band;
             state_lck.call_sign = output.call_sign;

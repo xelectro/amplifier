@@ -61,10 +61,16 @@ const headerConnDot = document.getElementById("header_conn_dot");
 
 const themeToggle = document.getElementById("theme_toggle");
 const THEME_KEY = "amplifier-theme";
+let themeMeterColors = { fill: "#0f0", face: "#fff" };
 
 function applyTheme(theme) {
     const selectedTheme = theme === "dark" ? "dark" : "light";
     document.body.dataset.theme = selectedTheme;
+    const styles = getComputedStyle(document.body);
+    themeMeterColors = {
+        fill: styles.getPropertyValue("--meter-fill").trim() || "#0f0",
+        face: styles.getPropertyValue("--meter-face").trim() || "#fff",
+    };
     if (themeToggle) {
         const darkMode = selectedTheme === "dark";
         themeToggle.textContent = darkMode ? "Light" : "Dark";
@@ -111,6 +117,18 @@ let meter_values = {};
 let meter_color = "";
 let storeMode = false;
 let lastActivityKey = "";
+let lastRenderedValues = {
+    tuneTurns: null,
+    tuneArc: null,
+    indTurns: null,
+    indArc: null,
+    loadTurns: null,
+    loadArc: null,
+    plate_v: null,
+    plate_a: null,
+    screen_a: null,
+    grid_a: null,
+};
 
 function setStreamStatus(isOnline) {
     if (headerConn) {
@@ -241,7 +259,7 @@ configBtn.addEventListener("click", (event) => {
     configWindow = window.open(
         "/config",
         "Config-Page",
-        "width=600, height=600",
+        "width=980, height=760",
     );
 });
 saveBtn.addEventListener("click", (event) => {
@@ -342,37 +360,69 @@ function renderMeters() {
     if (!meter_values || !meter_values.ratio) {
         return;
     }
-    const styles = getComputedStyle(document.body);
-    const meterFill = styles.getPropertyValue("--meter-fill").trim() || "#0f0";
-    const meterFace = styles.getPropertyValue("--meter-face").trim() || "#fff";
     const tuneDisplay = displayReading(meter_values.tune, meter_values.ratio.tune);
     const indDisplay = displayReading(meter_values.ind, meter_values.ratio.ind);
     const loadDisplay = displayReading(meter_values.load, meter_values.ratio.load);
+    const tuneArc = tuneDisplay[1] * 0.9;
+    const indArc = indDisplay[1] * 0.9;
+    const loadArc = loadDisplay[1] * 0.9;
 
-    meterReadingElement_tune.innerText = tuneDisplay[0];
-    meter_tune.style.background = `conic-gradient(${meterFill} ${tuneDisplay[1] * 0.9}deg, ${meterFace} 0deg)`;
-    meterReadingElement_ind.innerText = indDisplay[0];
-    meter_ind.style.background = `conic-gradient(${meterFill} ${indDisplay[1] * 0.9}deg, ${meterFace} 0deg)`;
-    meterReadingElement_load.innerText = loadDisplay[0];
-    meter_load.style.background = `conic-gradient(${meterFill} ${loadDisplay[1] * 0.9}deg, ${meterFace} 0deg)`;
+    if (lastRenderedValues.tuneTurns !== tuneDisplay[0]) {
+        meterReadingElement_tune.innerText = tuneDisplay[0];
+        lastRenderedValues.tuneTurns = tuneDisplay[0];
+    }
+    if (lastRenderedValues.tuneArc !== tuneArc) {
+        meter_tune.style.background = `conic-gradient(${themeMeterColors.fill} ${tuneArc}deg, ${themeMeterColors.face} 0deg)`;
+        lastRenderedValues.tuneArc = tuneArc;
+    }
+
+    if (lastRenderedValues.indTurns !== indDisplay[0]) {
+        meterReadingElement_ind.innerText = indDisplay[0];
+        lastRenderedValues.indTurns = indDisplay[0];
+    }
+    if (lastRenderedValues.indArc !== indArc) {
+        meter_ind.style.background = `conic-gradient(${themeMeterColors.fill} ${indArc}deg, ${themeMeterColors.face} 0deg)`;
+        lastRenderedValues.indArc = indArc;
+    }
+
+    if (lastRenderedValues.loadTurns !== loadDisplay[0]) {
+        meterReadingElement_load.innerText = loadDisplay[0];
+        lastRenderedValues.loadTurns = loadDisplay[0];
+    }
+    if (lastRenderedValues.loadArc !== loadArc) {
+        meter_load.style.background = `conic-gradient(${themeMeterColors.fill} ${loadArc}deg, ${themeMeterColors.face} 0deg)`;
+        lastRenderedValues.loadArc = loadArc;
+    }
 
     gauges.forEach((gauge, i) => {
         switch (i) {
             case 0:
-                gauge.style.setProperty("--value", meter_values.plate_v / 10000);
-                gauge.textContent = Math.round(meter_values.plate_v) + "V";
+                if (lastRenderedValues.plate_v !== meter_values.plate_v) {
+                    gauge.style.setProperty("--value", meter_values.plate_v / 10000);
+                    gauge.textContent = Math.round(meter_values.plate_v) + "V";
+                    lastRenderedValues.plate_v = meter_values.plate_v;
+                }
                 break;
             case 1:
-                gauge.style.setProperty("--value", meter_values.plate_a / 3);
-                gauge.textContent = Math.round(meter_values.plate_a) + "A";
+                if (lastRenderedValues.plate_a !== meter_values.plate_a) {
+                    gauge.style.setProperty("--value", meter_values.plate_a / 3);
+                    gauge.textContent = Math.round(meter_values.plate_a) + "A";
+                    lastRenderedValues.plate_a = meter_values.plate_a;
+                }
                 break;
             case 2:
-                gauge.style.setProperty("--value", meter_values.screen_a / 200);
-                gauge.textContent = Math.round(meter_values.screen_a) + "mA";
+                if (lastRenderedValues.screen_a !== meter_values.screen_a) {
+                    gauge.style.setProperty("--value", meter_values.screen_a / 200);
+                    gauge.textContent = Math.round(meter_values.screen_a) + "mA";
+                    lastRenderedValues.screen_a = meter_values.screen_a;
+                }
                 break;
             case 3:
-                gauge.style.setProperty("--value", meter_values.grid_a / 50);
-                gauge.textContent = Math.round(meter_values.grid_a) + "mA";
+                if (lastRenderedValues.grid_a !== meter_values.grid_a) {
+                    gauge.style.setProperty("--value", meter_values.grid_a / 50);
+                    gauge.textContent = Math.round(meter_values.grid_a) + "mA";
+                    lastRenderedValues.grid_a = meter_values.grid_a;
+                }
                 break;
         }
     });
