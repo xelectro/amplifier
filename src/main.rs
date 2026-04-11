@@ -978,6 +978,7 @@ async fn aquire_i2c_data(state: Arc<Mutex<AppState>>) {
         }
         let state_snapshot = state.lock().await.clone();
         let pwr_btns = state_snapshot.pwr_btns.clone();
+        let pwr_btns_state = state_snapshot.pwr_btns_state.clone();
         let tune = state_snapshot.tune.lock().await.clone();
         let ind = state_snapshot.ind.lock().await.clone();
         let load = state_snapshot.load.lock().await.clone();
@@ -990,7 +991,7 @@ async fn aquire_i2c_data(state: Arc<Mutex<AppState>>) {
         let reading = tokio::task::spawn_blocking(move || {
             let started = Instant::now();
             let mut val = pwr_btns;
-            let mut temp_data: HashMap<String, [String;2]> = HashMap::new();
+            let mut temp_data = pwr_btns_state;
             let btn_arr = [val.Blwr[0], val.Fil[0], val.Fil[1], val.HV[0], val.HV[1]];
             btn_arr.iter().enumerate().for_each(|btn|{
                 if let Ok(level) = val.mcp.read_pin(*btn.1) {

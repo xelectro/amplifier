@@ -356,6 +356,10 @@ function updateBarMeter(container, currentValue, maxValue) {
     meter.optimum = 500;
 }
 
+function powerButtonState(name, index) {
+    return meter_values?.pwr_btns?.[name]?.[index] || "OFF";
+}
+
 function renderMeters() {
     if (!meter_values || !meter_values.ratio) {
         return;
@@ -451,7 +455,7 @@ learn_update.onmessage = (e) => {
         updateBarMeter(bar_meter_ind, meter_values.ind, meter_values.max.ind);
         updateBarMeter(bar_meter_load, meter_values.load, meter_values.max.load);
         statusBarContents.innerText = `Status Bar: ${meter_values.status}`;
-        if (meter_values.pwr_btns.Fil[1] == "ON") {
+        if (powerButtonState("Fil", 1) == "ON") {
             pwrBtnTableRow.childNodes[1].childNodes[0].childNodes[0].childNodes[1].setAttribute(
                 "style",
                 "background-color: magenta;",
@@ -461,7 +465,7 @@ learn_update.onmessage = (e) => {
                 "style",
             );
         }
-        if (meter_values.pwr_btns.HV[1] == "ON") {
+        if (powerButtonState("HV", 1) == "ON") {
             pwrBtnTableRow.childNodes[2].childNodes[0].childNodes[0].childNodes[1].setAttribute(
                 "style",
                 "background-color: magenta;",
