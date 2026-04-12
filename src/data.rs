@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use crate::web::{Encoder, Mcp, Stepper};
 use askama::Template;
-use serde::{Deserialize, Serialize};
-use std::sync::{Arc, mpsc};
-use tokio::sync::{broadcast::Sender, Mutex};
-use crate::web::{Stepper, Mcp, Encoder};
 use mcp230xx::Mcp23017;
 use rppal::gpio::OutputPin;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Arc, mpsc};
+use tokio::sync::{Mutex, broadcast::Sender};
 
 pub fn default_pwr_btn_state() -> HashMap<String, [String; 2]> {
     HashMap::from([
@@ -120,7 +120,7 @@ pub struct AppState {
     pub sleep: bool,
     pub enable_pin: Arc<Mutex<OutputPin>>,
     pub pwr_btns: PwrBtns,
-    pub pwr_btns_state: HashMap<String, [String;2]>,
+    pub pwr_btns_state: HashMap<String, [String; 2]>,
     pub temperature: f64,
     pub gpio_pins: Vec<u8>,
     pub call_sign: String,
@@ -160,21 +160,21 @@ pub struct PwrBtns {
 }
 impl PwrBtns {
     pub fn new() -> Self {
-        let mcp = Mcp::new();
+        let mut mcp = Mcp::new();
+        mcp.init();
         Self {
             Blwr: [*mcp.pins.get("A0").unwrap()],
             Fil: [*mcp.pins.get("A1").unwrap(), *mcp.pins.get("A2").unwrap()],
             HV: [*mcp.pins.get("A3").unwrap(), *mcp.pins.get("A4").unwrap()],
             Oper: [*mcp.pins.get("A5").unwrap()],
-            bands: [*mcp.pins.get("B0").unwrap(),
-                    *mcp.pins.get("B1").unwrap(),
-                    *mcp.pins.get("B2").unwrap(),
-                    *mcp.pins.get("B3").unwrap(),
-                    *mcp.pins.get("B4").unwrap(),],
-            mcp: {let mut output  = Mcp::new();
-                output.init();
-                output}
-
+            bands: [
+                *mcp.pins.get("B0").unwrap(),
+                *mcp.pins.get("B1").unwrap(),
+                *mcp.pins.get("B2").unwrap(),
+                *mcp.pins.get("B3").unwrap(),
+                *mcp.pins.get("B4").unwrap(),
+            ],
+            mcp,
         }
     }
 }
