@@ -10,7 +10,7 @@ use std::sync::{
     mpsc::{self, Sender},
 };
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{collections::HashMap, error::Error};
 //use linux_embedded_hal::I2cdev;
 use anyhow::{Result, bail};
@@ -334,6 +334,7 @@ pub struct Mcp {
     pub bus: Arc<Mutex<I2c>>,
     pub device_list: Vec<u16>,
     pub mcp_present: bool,
+    pub last_reconnect: Option<Instant>,
     pub message: String,
     pub switch: HashMap<String, String>,
 }
@@ -371,6 +372,7 @@ impl Mcp {
             bus: Arc::new(Mutex::new(i2c)),
             device_list: devices,
             mcp_present,
+            last_reconnect: None,
             pins: HashMap::from([
                 ("A0".to_string(), Mcp23017::A0),
                 ("A1".to_string(), Mcp23017::A1),
@@ -444,6 +446,62 @@ impl Mcp {
 
         unreachable!("startup retry loop always returns");
     }
+    pub fn reconnect_i2c(&mut self, reason: &str) -> bool {
+        const RECONNECT_DELAY: Duration = Duration::from_secs(5);
+
+        if self
+            .last_reconnect
+            .is_some_and(|last| last.elapsed() < RECONNECT_DELAY)
+        {
+            return self.mcp_present;
+        }
+
+        self.last_reconnect = Some(Instant::now());
+        eprintln!("Reopening I2C bus: {reason}");
+
+        let mut i2c = match I2c::new() {
+            Ok(i2c) => i2c,
+            Err(err) => {
+                self.mcp_present = false;
+                self.device_list
+                    .retain(|addr| *addr != MCP23017_ADDRESS as u16);
+                self.message = format!("I2C reconnect failed: {err}");
+                eprintln!("{}", self.message);
+                return false;
+            }
+        };
+
+        let mcp_present = Self::probe_mcp(&mut i2c);
+        match self.bus.lock() {
+            Ok(mut bus) => {
+                *bus = i2c;
+            }
+            Err(err) => {
+                self.mcp_present = false;
+                self.message = format!("I2C bus lock failed during reconnect: {err}");
+                eprintln!("{}", self.message);
+                return false;
+            }
+        }
+
+        self.mcp_present = mcp_present;
+        if mcp_present {
+            if !self.device_list.contains(&(MCP23017_ADDRESS as u16)) {
+                self.device_list.push(MCP23017_ADDRESS as u16);
+            }
+            self.message = String::from("MCP reconnected");
+            self.init();
+        } else {
+            self.device_list
+                .retain(|addr| *addr != MCP23017_ADDRESS as u16);
+            self.message = String::from("MCP not detected during reconnect");
+        }
+
+        mcp_present
+    }
+    fn ensure_mcp_present(&mut self) -> bool {
+        self.mcp_present || self.reconnect_i2c("MCP23017 is not present")
+    }
     pub fn init(&mut self) {
         if !self.mcp_present {
             println!("Skipping MCP23017 init because the device is not present.");
@@ -461,23 +519,40 @@ impl Mcp {
         }
     }
     pub fn read_pin(&mut self, pin: Mcp23017) -> Result<mcp230xx::Level> {
-        if !self.mcp_present {
+        if !self.ensure_mcp_present() {
             bail!("MCP23017 is not present; cannot read {:?}", pin);
         }
         let i2c_mcp = MutexDevice::new(&self.bus).reverse();
         let mut mcp: Mcp230xx<_, Mcp23017> = Mcp230xx::new(i2c_mcp, MCP23017_ADDRESS).unwrap();
-        Ok(mcp.gpio(pin)?)
+        match mcp.gpio(pin) {
+            Ok(level) => Ok(level),
+            Err(err) => {
+                self.mcp_present = false;
+                self.device_list
+                    .retain(|addr| *addr != MCP23017_ADDRESS as u16);
+                let _ = self.reconnect_i2c("MCP23017 read failed");
+                Err(err.into())
+            }
+        }
     }
     pub fn set_pin(&mut self, pin: Mcp23017, val: mcp230xx::Level) -> Result<()> {
-        if !self.mcp_present {
+        if !self.ensure_mcp_present() {
             bail!("MCP23017 is not present; cannot set {:?}", pin);
         }
         let i2c_mcp = MutexDevice::new(&self.bus).reverse();
         let mut mcp: Mcp230xx<_, Mcp23017> = Mcp230xx::new(i2c_mcp, MCP23017_ADDRESS).unwrap();
-        mcp.set_gpio(pin, val)?;
-        Ok(())
+        match mcp.set_gpio(pin, val) {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                self.mcp_present = false;
+                self.device_list
+                    .retain(|addr| *addr != MCP23017_ADDRESS as u16);
+                let _ = self.reconnect_i2c("MCP23017 write failed");
+                Err(err.into())
+            }
+        }
     }
-    pub fn read_val(&self) -> Result<[f64; 5], Box<dyn Error>> {
+    pub fn read_val(&mut self) -> Result<[f64; 5], Box<dyn Error>> {
         let i2c_ina = MutexDevice::new(&self.bus);
         let i2c_ina1 = MutexDevice::new(&self.bus);
         let i2c_ina2 = MutexDevice::new(&self.bus);

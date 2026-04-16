@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Amplifier UI
+Comment=Open the Amplifier controller after the backend is ready
+Exec=/home/pi/Documents/Code/rust/amplifier/systemd/open-amplifier-chromium.sh
+Terminal=false
+X-GNOME-Autostart-enabled=true

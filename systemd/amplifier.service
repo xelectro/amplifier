@@ -1,0 +1,14 @@
+[Unit]
+Description=Amplifier controller
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/Documents/Code/rust/amplifier
+ExecStart=/home/pi/Documents/Code/rust/amplifier/target/release/amplifier
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

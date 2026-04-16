@@ -1195,15 +1195,22 @@ async fn aquire_i2c_data(state: Arc<Mutex<AppState>>) {
             let mut screen_a = 0_u32;
             let mut grid_a = 0_u32;
             if !suspend_ina {
-                if let Ok(t) = val.mcp.read_val() {
-                    plate_v = t[2].abs() as u32;
-                    plate_a = t[1].abs() as u32;
-                    temp = t[0];
-                    screen_a = t[3].abs() as u32;
-                    grid_a = t[4].abs() as u32;
+                match val.mcp.read_val() {
+                    Ok(t) => {
+                        plate_v = t[2].abs() as u32;
+                        plate_a = t[1].abs() as u32;
+                        temp = t[0];
+                        screen_a = t[3].abs() as u32;
+                        grid_a = t[4].abs() as u32;
+                    }
+                    Err(err) => {
+                        eprintln!("INA read failed: {err}");
+                        let _ = val.mcp.reconnect_i2c("INA read failed");
+                    }
                 }
             }
             (
+                val,
                 temp_data,
                 temp,
                 plate_a,
@@ -1214,13 +1221,15 @@ async fn aquire_i2c_data(state: Arc<Mutex<AppState>>) {
             )
         })
         .await;
-        let Ok((temp_data, temp, plate_a, plate_v, screen_a, grid_a, elapsed)) = reading else {
+        let Ok((pwr_btns, temp_data, temp, plate_a, plate_v, screen_a, grid_a, elapsed)) = reading
+        else {
             continue;
         };
         if elapsed > Duration::from_millis(250) {
             println!("I2C poll took {:?}", elapsed);
         }
         let mut state_lck = state.lock().await;
+        state_lck.pwr_btns = pwr_btns;
         state_lck.pwr_btns_state = temp_data;
         state_lck.temperature = temp;
         state_lck.gauges.plate_a = plate_a;
