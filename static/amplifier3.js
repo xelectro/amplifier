@@ -409,8 +409,9 @@ function renderMeters() {
                 break;
             case 1:
                 if (lastRenderedValues.plate_a !== meter_values.plate_a) {
-                    gauge.style.setProperty("--value", meter_values.plate_a / 3);
-                    gauge.textContent = Math.round(meter_values.plate_a) + "A";
+                    const plateAmps = Number(meter_values.plate_a) || 0;
+                    gauge.style.setProperty("--value", plateAmps / 3);
+                    gauge.textContent = (plateAmps < 1 ? plateAmps.toFixed(2) : plateAmps.toFixed(1)) + "A";
                     lastRenderedValues.plate_a = meter_values.plate_a;
                 }
                 break;

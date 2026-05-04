@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
         band: Bands::M10,
         gauges: Gauges {
             plate_v: 0,
-            plate_a: 1,
+            plate_a: 1.0,
             screen_a: 50,
             grid_a: 10,
         },
@@ -1190,7 +1190,7 @@ async fn aquire_i2c_data(state: Arc<Mutex<AppState>>) {
                 }
             });
             let mut temp = 0.0;
-            let mut plate_a = 0_u32;
+            let mut plate_a = 0.0_f64;
             let mut plate_v = 0_u32;
             let mut screen_a = 0_u32;
             let mut grid_a = 0_u32;
@@ -1198,7 +1198,7 @@ async fn aquire_i2c_data(state: Arc<Mutex<AppState>>) {
                 match val.mcp.read_val() {
                     Ok(t) => {
                         plate_v = t[2].abs() as u32;
-                        plate_a = t[1].abs() as u32;
+                        plate_a = t[1].abs();
                         temp = t[0];
                         screen_a = t[3].abs() as u32;
                         grid_a = t[4].abs() as u32;

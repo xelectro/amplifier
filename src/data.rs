@@ -44,7 +44,7 @@ pub struct SseData {
     pub ratio: HashMap<String, u8>,
     pub i2c_devices: Vec<u16>,
     pub plate_v: u32,
-    pub plate_a: u32,
+    pub plate_a: f64,
     pub screen_a: u32,
     pub grid_a: u32,
     pub pwr_btns: HashMap<String, [String; 2]>,
@@ -73,7 +73,7 @@ impl SseData {
             ]),
             i2c_devices: Vec::new(),
             plate_v: 0,
-            plate_a: 0,
+            plate_a: 0.0,
             screen_a: 0,
             grid_a: 0,
             pwr_btns: default_pwr_btn_state(),
@@ -145,7 +145,7 @@ pub enum Bands {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Gauges {
     pub plate_v: u32,
-    pub plate_a: u32,
+    pub plate_a: f64,
     pub screen_a: u32,
     pub grid_a: u32,
 }
