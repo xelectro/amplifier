@@ -87,9 +87,11 @@
 
     function renderDial() {
         const turnUnits = displayPosition % 400;
-        const turns = Math.floor(displayPosition / 400);
+        const percentage = maxDisplay > 0
+            ? Math.round((clamp(displayPosition, 0, maxDisplay) / maxDisplay) * 100)
+            : 0;
         indicator.style.transform = `rotate(${(turnUnits * 0.9) - 90}deg)`;
-        dialValue.textContent = turns;
+        dialValue.textContent = `${percentage}%`;
         dialMeta.textContent = `${turnUnits} / 400`;
         dialDisplayUnits.textContent = displayPosition;
         dialRawUnits.textContent = rawPosition;

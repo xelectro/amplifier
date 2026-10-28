@@ -60,6 +60,16 @@ This repo is aimed at being **deployable like an appliance**:
 
 ## Quick start (developer)
 
+### Local UI simulation (no Raspberry Pi required)
+
+Run the simulator from the repository root:
+
+```bash
+cargo run --bin simulator
+```
+
+Then open <http://127.0.0.1:3000>. The simulator serves the production UI with animated tuner and gauge data, supports the touch-dial popup, and never initializes GPIO or I²C hardware. Hardware configuration and control actions are intentionally stubbed.
+
 ### 1) Install build dependencies
 
 On Raspberry Pi OS / Debian-based distros:
@@ -194,4 +204,3 @@ More in: `docs/troubleshooting.md`
 ## License
 
 TBD 
-

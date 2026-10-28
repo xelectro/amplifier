@@ -118,11 +118,11 @@ let meter_color = "";
 let storeMode = false;
 let lastActivityKey = "";
 let lastRenderedValues = {
-    tuneTurns: null,
+    tunePercentage: null,
     tuneArc: null,
-    indTurns: null,
+    indPercentage: null,
     indArc: null,
-    loadTurns: null,
+    loadPercentage: null,
     loadArc: null,
     plate_v: null,
     plate_a: null,
@@ -364,34 +364,46 @@ function renderMeters() {
     if (!meter_values || !meter_values.ratio) {
         return;
     }
-    const tuneDisplay = displayReading(meter_values.tune, meter_values.ratio.tune);
-    const indDisplay = displayReading(meter_values.ind, meter_values.ratio.ind);
-    const loadDisplay = displayReading(meter_values.load, meter_values.ratio.load);
+    const tuneDisplay = displayReading(
+        meter_values.tune,
+        meter_values.ratio.tune,
+        meter_values.max.tune,
+    );
+    const indDisplay = displayReading(
+        meter_values.ind,
+        meter_values.ratio.ind,
+        meter_values.max.ind,
+    );
+    const loadDisplay = displayReading(
+        meter_values.load,
+        meter_values.ratio.load,
+        meter_values.max.load,
+    );
     const tuneArc = tuneDisplay[1] * 0.9;
     const indArc = indDisplay[1] * 0.9;
     const loadArc = loadDisplay[1] * 0.9;
 
-    if (lastRenderedValues.tuneTurns !== tuneDisplay[0]) {
+    if (lastRenderedValues.tunePercentage !== tuneDisplay[0]) {
         meterReadingElement_tune.innerText = tuneDisplay[0];
-        lastRenderedValues.tuneTurns = tuneDisplay[0];
+        lastRenderedValues.tunePercentage = tuneDisplay[0];
     }
     if (lastRenderedValues.tuneArc !== tuneArc) {
         meter_tune.style.background = `conic-gradient(${themeMeterColors.fill} ${tuneArc}deg, ${themeMeterColors.face} 0deg)`;
         lastRenderedValues.tuneArc = tuneArc;
     }
 
-    if (lastRenderedValues.indTurns !== indDisplay[0]) {
+    if (lastRenderedValues.indPercentage !== indDisplay[0]) {
         meterReadingElement_ind.innerText = indDisplay[0];
-        lastRenderedValues.indTurns = indDisplay[0];
+        lastRenderedValues.indPercentage = indDisplay[0];
     }
     if (lastRenderedValues.indArc !== indArc) {
         meter_ind.style.background = `conic-gradient(${themeMeterColors.fill} ${indArc}deg, ${themeMeterColors.face} 0deg)`;
         lastRenderedValues.indArc = indArc;
     }
 
-    if (lastRenderedValues.loadTurns !== loadDisplay[0]) {
+    if (lastRenderedValues.loadPercentage !== loadDisplay[0]) {
         meterReadingElement_load.innerText = loadDisplay[0];
-        lastRenderedValues.loadTurns = loadDisplay[0];
+        lastRenderedValues.loadPercentage = loadDisplay[0];
     }
     if (lastRenderedValues.loadArc !== loadArc) {
         meter_load.style.background = `conic-gradient(${themeMeterColors.fill} ${loadArc}deg, ${themeMeterColors.face} 0deg)`;
@@ -563,10 +575,15 @@ function setColor(val) {
     }
     return meter_color;
 }
-function displayReading(val, ratio) {
-    val = Math.round(val / ratio);
+function displayReading(val, ratio, max) {
+    const rawValue = Number(val) || 0;
+    const rawMax = Number(max) || 0;
+    val = Math.round(rawValue / ratio);
     let count = float2Int(val / 400);
     let meter_value = val - 400 * count;
     let color = setColor(meter_value);
-    return [count, meter_value, color];
+    const percentage = rawMax > 0
+        ? Math.round((Math.min(rawMax, Math.max(0, rawValue)) / rawMax) * 100)
+        : 0;
+    return [`${percentage}%`, meter_value, color];
 }
